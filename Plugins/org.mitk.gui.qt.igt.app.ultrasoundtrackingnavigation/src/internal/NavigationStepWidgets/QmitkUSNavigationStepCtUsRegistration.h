@@ -224,7 +224,7 @@ private:
   mitk::AffineTransform3D::Pointer m_TransformMarkerCSToFloatingImageCS;
 
   /*!
-  \brief The 3D dimension of the CT image given in index size.
+  \brief The 3D  dimension of the CT image given in index size.
   */
   mitk::Vector3D m_ImageDimension;
   mitk::Vector3D m_ImageSpacing;
