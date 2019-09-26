@@ -194,11 +194,12 @@ bool QmitkUSNavigationStepCtUsRegistration::FilterFloatingImage()
   m_BinaryImageToShapeLabelMapFilter->SetInput(m_HoleFillingFilter->GetOutput());
   m_BinaryImageToShapeLabelMapFilter->Update();
 
+
   ImageType::Pointer binaryImage = ImageType::New();
   binaryImage = m_HoleFillingFilter->GetOutput();
 
   this->EliminateTooSmallLabeledObjects(binaryImage);
-  //mitk::CastToMitkImage(binaryImage, m_FloatingImage);
+  mitk::CastToMitkImage(binaryImage, m_FloatingImage);
   return true;
 }
 
@@ -207,15 +208,31 @@ void QmitkUSNavigationStepCtUsRegistration::InitializeImageFilters()
   //Initialize threshold filters
   m_ThresholdFilter = itk::ThresholdImageFilter<ImageType>::New();
   m_ThresholdFilter->SetOutsideValue(0);
-  m_ThresholdFilter->SetLower(500);
-  m_ThresholdFilter->SetUpper(3200);
+  if (ui->useMriCheckBox->isChecked() )
+  {
+    m_ThresholdFilter->SetLower(50);
+    m_ThresholdFilter->SetUpper(1800);
+  }
+  else
+  {
+    m_ThresholdFilter->SetLower(500);
+    m_ThresholdFilter->SetUpper(3200);
+  }
 
   //Initialize binary threshold filter 1
   m_BinaryThresholdFilter = BinaryThresholdImageFilterType::New();
   m_BinaryThresholdFilter->SetOutsideValue(0);
   m_BinaryThresholdFilter->SetInsideValue(1);
-  m_BinaryThresholdFilter->SetLowerThreshold(350);
-  m_BinaryThresholdFilter->SetUpperThreshold(10000);
+  if (ui->useMriCheckBox->isChecked())
+  {
+    m_BinaryThresholdFilter->SetLowerThreshold(10);
+    m_BinaryThresholdFilter->SetUpperThreshold(500);
+  }
+  else
+  {
+    m_BinaryThresholdFilter->SetLowerThreshold(350);
+    m_BinaryThresholdFilter->SetUpperThreshold(10000);
+  }
 
   //Initialize laplacian recursive gaussian image filter
   m_LaplacianFilter1 = LaplacianRecursiveGaussianImageFilterType::New();
@@ -851,7 +868,12 @@ void QmitkUSNavigationStepCtUsRegistration::EliminateTooSmallLabeledObjects(
   double fiducialVolume;
   unsigned int numberOfPixels;
 
-  if (ui->fiducialDiameter3mmRadioButton->isChecked())
+  if (ui->useMriCheckBox->isChecked())
+  {
+    fiducialVolume = this->GetFiducialVolume(3.0);
+    numberOfPixels = ceil(fiducialVolume / voxelVolume);
+  }
+  else if (ui->fiducialDiameter3mmRadioButton->isChecked())
   {
     fiducialVolume = this->GetFiducialVolume(1.5);
     numberOfPixels = ceil(fiducialVolume / voxelVolume);
@@ -874,16 +896,16 @@ void QmitkUSNavigationStepCtUsRegistration::EliminateTooSmallLabeledObjects(
   {
     // Get the ith region
     BinaryImageToShapeLabelMapFilterType::OutputImageType::LabelObjectType* labelObject = labelMap->GetNthLabelObject(i);
-    MITK_INFO << "Object " << i << " contains " << labelObject->Size() << " pixel";
+    //MITK_INFO << "Object " << i << " contains " << labelObject->Size() << " pixel";
 
     //TODO: Threshold-Wert evtl. experimentell besser abstimmen,
     //      um zu verhindern, dass durch Threshold wahre Fiducial-Kandidaten elimiert werden.
-    if (labelObject->Size() < numberOfPixels * 0.8)
+    if (labelObject->Size() < numberOfPixels * 0.8 || labelObject->Size() > numberOfPixels * 2)
     {
-      for (unsigned int pixelId = 0; pixelId < labelObject->Size(); pixelId++)
+      /*for (unsigned int pixelId = 0; pixelId < labelObject->Size(); pixelId++)
       {
         binaryImage->SetPixel(labelObject->GetIndex(pixelId), 0);
-      }
+      }*/
       labelMap->RemoveLabelObject(labelObject);
     }
   }
@@ -1109,13 +1131,13 @@ void QmitkUSNavigationStepCtUsRegistration::GetCentroidsOfLabeledObjects()
   {
     // Get the ith region
     BinaryImageToShapeLabelMapFilterType::OutputImageType::LabelObjectType* labelObject = labelMap->GetNthLabelObject(i);
-    MITK_INFO << "Object " << i << " contains " << labelObject->Size() << " pixel";
 
     mitk::Vector3D centroid;
     centroid[0] = labelObject->GetCentroid()[0];
     centroid[1] = labelObject->GetCentroid()[1];
     centroid[2] = labelObject->GetCentroid()[2];
     m_CentroidsOfFiducialCandidates.push_back(centroid);
+    //MITK_INFO << "Position: " << centroid << " | object " << i << " contains " << labelObject->Size() << " pixel";
   }
   //evtl. for later: itk::LabelMapOverlayImageFilter
 }
@@ -1168,7 +1190,7 @@ void QmitkUSNavigationStepCtUsRegistration::NumerateFiducialMarks()
     mitk::DataNode::Pointer node = mitk::DataNode::New();
     node->SetData(m_MarkerFloatingImageCoordinateSystemPointSet);
     node->SetName("MarkerFloatingImageCSPointSet");
-    //node->SetFloatProperty("pointsize", 5.0);
+    node->SetFloatProperty("pointsize", 5.0);
     this->GetDataStorage()->Add(node);
   }
 }
@@ -1199,10 +1221,10 @@ void QmitkUSNavigationStepCtUsRegistration::CalculateDistancesBetweenFiducials(s
 
   for (unsigned int i = 0; i < distanceVectorsFiducials.size(); ++i)
   {
-    MITK_INFO << "Vector " << i << ":";
+    //MITK_INFO << "Vector " << i << ":";
     for (unsigned int k = 0; k < distanceVectorsFiducials.at(i).size(); ++k)
     {
-      MITK_INFO << distanceVectorsFiducials.at(i).at(k);
+      //MITK_INFO << distanceVectorsFiducials.at(i).at(k);
     }
   }
 }
@@ -1707,15 +1729,20 @@ void QmitkUSNavigationStepCtUsRegistration::OnLocalizeFiducials()
 
   this->GetCentroidsOfLabeledObjects();
 
-  if (!this->EliminateFiducialCandidatesByEuclideanDistances() ||
-      m_CentroidsOfFiducialCandidates.size() != NUMBER_FIDUCIALS_NEEDED)
+  for (int i = 0; m_CentroidsOfFiducialCandidates.size() > NUMBER_FIDUCIALS_NEEDED && i < 100; ++i)
   {
-    QMessageBox msgBox;
-    QString text = QString("Have found %1 instead of 8 fiducial candidates.\
-      Cannot perform fiducial localization procedure.").arg(m_CentroidsOfFiducialCandidates.size());
-    msgBox.setText(text);
-    msgBox.exec();
-    return;
+    MITK_INFO << "Size centroids fiducial candidates: " << m_CentroidsOfFiducialCandidates.size();
+    if (!this->EliminateFiducialCandidatesByEuclideanDistances() ||
+        m_CentroidsOfFiducialCandidates.size() < NUMBER_FIDUCIALS_NEEDED)
+    {
+      QMessageBox msgBox;
+      QString text = QString("Have found %1 instead of 8 fiducial candidates.\
+      Cannot perform fiducial localization procedure.")
+                       .arg(m_CentroidsOfFiducialCandidates.size());
+      msgBox.setText(text);
+      msgBox.exec();
+      return;
+    }
   }
 
   //Before calling NumerateFiducialMarks it must be sure,

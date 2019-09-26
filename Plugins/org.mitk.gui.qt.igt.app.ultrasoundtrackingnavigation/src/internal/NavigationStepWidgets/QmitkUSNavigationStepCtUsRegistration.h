@@ -210,6 +210,8 @@ private:
   BinaryThresholdImageFilterType::Pointer m_BinaryThresholdFilter;
   LaplacianRecursiveGaussianImageFilterType::Pointer m_LaplacianFilter1;
   LaplacianRecursiveGaussianImageFilterType::Pointer m_LaplacianFilter2;
+  LaplacianRecursiveGaussianImageFilterType::Pointer m_LaplacianFilter3;
+  LaplacianRecursiveGaussianImageFilterType::Pointer m_LaplacianFilter4;
   VotingBinaryIterativeHoleFillingImageFilterType::Pointer m_HoleFillingFilter;
   BinaryImageToShapeLabelMapFilterType::Pointer m_BinaryImageToShapeLabelMapFilter;
 

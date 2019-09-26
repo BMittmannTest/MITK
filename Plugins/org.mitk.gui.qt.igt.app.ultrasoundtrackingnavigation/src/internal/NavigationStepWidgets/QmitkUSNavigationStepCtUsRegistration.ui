@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>403</width>
+    <width>412</width>
     <height>933</height>
    </rect>
   </property>
@@ -73,6 +73,13 @@
         </property>
         <property name="autoExclusive">
          <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QCheckBox" name="useMriCheckBox">
+        <property name="text">
+         <string>Use MRI instead of CT</string>
         </property>
        </widget>
       </item>
