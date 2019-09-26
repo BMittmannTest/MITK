@@ -225,7 +225,7 @@ void QmitkUSNavigationStepCtUsRegistration::InitializeImageFilters()
   m_BinaryThresholdFilter->SetInsideValue(1);
   if (ui->useMriCheckBox->isChecked())
   {
-    m_BinaryThresholdFilter->SetLowerThreshold(10);
+    m_BinaryThresholdFilter->SetLowerThreshold(20);
     m_BinaryThresholdFilter->SetUpperThreshold(500);
   }
   else
