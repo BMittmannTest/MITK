@@ -19,18 +19,16 @@ See LICENSE.txt or http://www.mitk.org for details.
 
 #include <QMessageBox>
 
-#include "mitkNodeDisplacementFilter.h"
 #include "../Filter/mitkFloatingImageToUltrasoundRegistrationFilter.h"
 #include "../QmitkUSNavigationMarkerPlacement.h"
+#include "mitkNodeDisplacementFilter.h"
 
-
-
-#include <mitkNodePredicateNot.h>
-#include <mitkNodePredicateProperty.h>
-#include <mitkLabelSetImage.h>
 #include "mitkProperties.h"
 #include <mitkImage.h>
 #include <mitkImageCast.h>
+#include <mitkLabelSetImage.h>
+#include <mitkNodePredicateNot.h>
+#include <mitkNodePredicateProperty.h>
 
 #include <mitkRenderingManager.h>
 #include <mitkStaticIGTHelperFunctions.h>
@@ -38,28 +36,27 @@ See LICENSE.txt or http://www.mitk.org for details.
 #include <vtkLandmarkTransform.h>
 #include <vtkPoints.h>
 
-#include <itkImageRegionIterator.h>
 #include <itkGeometryUtilities.h>
+#include <itkImageRegionIterator.h>
 #include <mitkImagePixelReadAccessor.h>
 
-#include <itkZeroCrossingImageFilter.h>
-#include <itkSimpleContourExtractorImageFilter.h>
 #include <itkCannyEdgeDetectionImageFilter.h>
+#include <itkSimpleContourExtractorImageFilter.h>
+#include <itkZeroCrossingImageFilter.h>
 
 static const int NUMBER_FIDUCIALS_NEEDED = 8;
 
-QmitkUSNavigationStepCtUsRegistration::QmitkUSNavigationStepCtUsRegistration(QWidget *parent) :
-  QmitkUSAbstractNavigationStep(parent),
-  ui(new Ui::QmitkUSNavigationStepCtUsRegistration),
-  m_PerformingGroundTruthProtocolEvaluation(false),
-  m_FloatingImageToUltrasoundRegistrationFilter(nullptr),
-  m_FreezeCombinedModality(false)
+QmitkUSNavigationStepCtUsRegistration::QmitkUSNavigationStepCtUsRegistration(QWidget *parent)
+  : QmitkUSAbstractNavigationStep(parent),
+    ui(new Ui::QmitkUSNavigationStepCtUsRegistration),
+    m_PerformingGroundTruthProtocolEvaluation(false),
+    m_FloatingImageToUltrasoundRegistrationFilter(nullptr),
+    m_FreezeCombinedModality(false)
 {
   this->UnsetFloatingImageGeometry();
   this->DefineDataStorageImageFilter();
   this->CreateQtPartControl(this);
 }
-
 
 QmitkUSNavigationStepCtUsRegistration::~QmitkUSNavigationStepCtUsRegistration()
 {
@@ -92,8 +89,7 @@ bool QmitkUSNavigationStepCtUsRegistration::OnActivateStep()
   ui->segmentationComboBox->SetDataStorage(this->GetDataStorage());
   ui->selectedSurfaceComboBox->SetDataStorage(this->GetDataStorage());
   ui->pointSetComboBox->SetDataStorage(this->GetDataStorage());
-  m_FloatingImageToUltrasoundRegistrationFilter =
-    mitk::FloatingImageToUltrasoundRegistrationFilter::New();
+  m_FloatingImageToUltrasoundRegistrationFilter = mitk::FloatingImageToUltrasoundRegistrationFilter::New();
   return true;
 }
 
@@ -105,7 +101,10 @@ bool QmitkUSNavigationStepCtUsRegistration::OnDeactivateStep()
 
 void QmitkUSNavigationStepCtUsRegistration::OnUpdate()
 {
-  if (m_NavigationDataSource.IsNull()) { return; }
+  if (m_NavigationDataSource.IsNull())
+  {
+    return;
+  }
 
   m_NavigationDataSource->Update();
   m_FloatingImageToUltrasoundRegistrationFilter->Update();
@@ -133,7 +132,6 @@ void QmitkUSNavigationStepCtUsRegistration::OnSetCombinedModality()
   {
     m_NavigationDataSource = combinedModality->GetNavigationDataSource();
   }
-
 }
 
 void QmitkUSNavigationStepCtUsRegistration::UnsetFloatingImageGeometry()
@@ -147,7 +145,7 @@ void QmitkUSNavigationStepCtUsRegistration::UnsetFloatingImageGeometry()
   m_ImageSpacing[2] = 1;
 }
 
-void QmitkUSNavigationStepCtUsRegistration::SetFloatingImageGeometryInformation(mitk::Image * image)
+void QmitkUSNavigationStepCtUsRegistration::SetFloatingImageGeometryInformation(mitk::Image *image)
 {
   m_ImageDimension[0] = image->GetDimension(0);
   m_ImageDimension[1] = image->GetDimension(1);
@@ -156,6 +154,9 @@ void QmitkUSNavigationStepCtUsRegistration::SetFloatingImageGeometryInformation(
   m_ImageSpacing[0] = image->GetGeometry()->GetSpacing()[0];
   m_ImageSpacing[1] = image->GetGeometry()->GetSpacing()[1];
   m_ImageSpacing[2] = image->GetGeometry()->GetSpacing()[2];
+
+  MITK_INFO << "GetScalarValueMax = " << image->GetScalarValueMax(0);
+  MITK_INFO << "GetScalarValueMin = " << image->GetScalarValueMin(0);
 }
 
 double QmitkUSNavigationStepCtUsRegistration::GetVoxelVolume()
@@ -189,28 +190,61 @@ bool QmitkUSNavigationStepCtUsRegistration::FilterFloatingImage()
   m_ThresholdFilter->SetInput(itkImage1);
   m_LaplacianFilter1->SetInput(m_ThresholdFilter->GetOutput());
   m_LaplacianFilter2->SetInput(m_LaplacianFilter1->GetOutput());
-  m_BinaryThresholdFilter->SetInput(m_LaplacianFilter2->GetOutput());
+
+  // Dynamically adjust lower threshold of binary filter only for MRI images:
+  if (ui->useMriCheckBox->isChecked())
+  {
+    m_LaplacianFilter2->Update();
+    mitk::CastToMitkImage(m_LaplacianFilter2->GetOutput(), m_FloatingImage);
+
+    if (m_FloatingImage->GetScalarValueMax() < 150)
+    {
+      m_BinaryThresholdFilter->SetLowerThreshold(2);
+    }
+    else if (m_FloatingImage->GetScalarValueMax() < 300)
+    {
+      m_BinaryThresholdFilter->SetLowerThreshold(10);
+    }
+    else if (m_FloatingImage->GetScalarValueMax() < 400)
+    {
+      m_BinaryThresholdFilter->SetLowerThreshold(15);
+    }
+    else
+    {
+      m_BinaryThresholdFilter->SetLowerThreshold(20);
+    }
+    ImageType::Pointer itkImage2 = ImageType::New();
+    mitk::CastToItkImage(m_FloatingImage, itkImage2);
+
+    m_BinaryThresholdFilter->SetInput(itkImage2);
+  }
+  else
+  {
+    m_BinaryThresholdFilter->SetInput(m_LaplacianFilter2->GetOutput());
+  }
+
   m_HoleFillingFilter->SetInput(m_BinaryThresholdFilter->GetOutput());
   m_BinaryImageToShapeLabelMapFilter->SetInput(m_HoleFillingFilter->GetOutput());
   m_BinaryImageToShapeLabelMapFilter->Update();
-
 
   ImageType::Pointer binaryImage = ImageType::New();
   binaryImage = m_HoleFillingFilter->GetOutput();
 
   this->EliminateTooSmallLabeledObjects(binaryImage);
   mitk::CastToMitkImage(binaryImage, m_FloatingImage);
+
   return true;
 }
 
 void QmitkUSNavigationStepCtUsRegistration::InitializeImageFilters()
 {
-  //Initialize threshold filters
+  // Initialize threshold filters
   m_ThresholdFilter = itk::ThresholdImageFilter<ImageType>::New();
   m_ThresholdFilter->SetOutsideValue(0);
-  if (ui->useMriCheckBox->isChecked() )
+
+  if (ui->useMriCheckBox->isChecked())
   {
-    m_ThresholdFilter->SetLower(50);
+    m_ThresholdFilter->SetLower(floor(m_FloatingImage->GetScalarValueMax() * 0.05));
     m_ThresholdFilter->SetUpper(1800);
   }
   else
@@ -219,13 +253,13 @@ void QmitkUSNavigationStepCtUsRegistration::InitializeImageFilters()
     m_ThresholdFilter->SetUpper(3200);
   }
 
-  //Initialize binary threshold filter 1
+  // Initialize binary threshold filter 1
   m_BinaryThresholdFilter = BinaryThresholdImageFilterType::New();
   m_BinaryThresholdFilter->SetOutsideValue(0);
   m_BinaryThresholdFilter->SetInsideValue(1);
   if (ui->useMriCheckBox->isChecked())
   {
-    m_BinaryThresholdFilter->SetLowerThreshold(20);
+    //Lower threshold is configured dynamically during image processing
     m_BinaryThresholdFilter->SetUpperThreshold(500);
   }
   else
@@ -234,11 +268,11 @@ void QmitkUSNavigationStepCtUsRegistration::InitializeImageFilters()
     m_BinaryThresholdFilter->SetUpperThreshold(10000);
   }
 
-  //Initialize laplacian recursive gaussian image filter
+  // Initialize laplacian recursive gaussian image filter
   m_LaplacianFilter1 = LaplacianRecursiveGaussianImageFilterType::New();
   m_LaplacianFilter2 = LaplacianRecursiveGaussianImageFilterType::New();
 
-  //Initialize binary hole filling filter
+  // Initialize binary hole filling filter
   m_HoleFillingFilter = VotingBinaryIterativeHoleFillingImageFilterType::New();
   VotingBinaryIterativeHoleFillingImageFilterType::InputSizeType radius;
   radius.Fill(1);
@@ -247,7 +281,7 @@ void QmitkUSNavigationStepCtUsRegistration::InitializeImageFilters()
   m_HoleFillingFilter->SetForegroundValue(1);
   m_HoleFillingFilter->SetMaximumNumberOfIterations(5);
 
-  //Initialize binary image to shape label map filter
+  // Initialize binary image to shape label map filter
   m_BinaryImageToShapeLabelMapFilter = BinaryImageToShapeLabelMapFilterType::New();
   m_BinaryImageToShapeLabelMapFilter->SetInputForegroundValue(1);
 }
@@ -275,17 +309,17 @@ double QmitkUSNavigationStepCtUsRegistration::GetCharacteristicDistanceBWithLowe
 {
   switch (ui->fiducialMarkerConfigurationComboBox->currentIndex())
   {
-    // case 0 is equal to fiducial marker configuration A (10mm distance)
-  case 0:
-    return 12.07;
+      // case 0 is equal to fiducial marker configuration A (10mm distance)
+    case 0:
+      return 12.07;
 
-    // case 1 is equal to fiducial marker configuration B (15mm distance)
-  case 1:
-    return 18.105;
+      // case 1 is equal to fiducial marker configuration B (15mm distance)
+    case 1:
+      return 18.105;
 
-    // case 2 is equal to fiducial marker configuration C (20mm distance)
-  case 2:
-    return 24.14;
+      // case 2 is equal to fiducial marker configuration C (20mm distance)
+    case 2:
+      return 24.14;
   }
   return 0.0;
 }
@@ -294,17 +328,17 @@ double QmitkUSNavigationStepCtUsRegistration::GetCharacteristicDistanceBWithUppe
 {
   switch (ui->fiducialMarkerConfigurationComboBox->currentIndex())
   {
-    // case 0 is equal to fiducial marker configuration A (10mm distance)
-  case 0:
-    return 15.73;
+      // case 0 is equal to fiducial marker configuration A (10mm distance)
+    case 0:
+      return 15.73;
 
-    // case 1 is equal to fiducial marker configuration B (15mm distance)
-  case 1:
-    return 23.595;
+      // case 1 is equal to fiducial marker configuration B (15mm distance)
+    case 1:
+      return 23.595;
 
-    // case 2 is equal to fiducial marker configuration C (20mm distance)
-  case 2:
-    return 31.46;
+      // case 2 is equal to fiducial marker configuration C (20mm distance)
+    case 2:
+      return 31.46;
   }
   return 0.0;
 }
@@ -313,17 +347,17 @@ double QmitkUSNavigationStepCtUsRegistration::GetMinimalFiducialConfigurationDis
 {
   switch (ui->fiducialMarkerConfigurationComboBox->currentIndex())
   {
-    // case 0 is equal to fiducial marker configuration A (10mm distance)
-  case 0:
-    return 10.0;
+      // case 0 is equal to fiducial marker configuration A (10mm distance)
+    case 0:
+      return 10.0;
 
-    // case 1 is equal to fiducial marker configuration B (15mm distance)
-  case 1:
-    return 15.0;
+      // case 1 is equal to fiducial marker configuration B (15mm distance)
+    case 1:
+      return 15.0;
 
-    // case 2 is equal to fiducial marker configuration C (20mm distance)
-  case 2:
-    return 20.0;
+      // case 2 is equal to fiducial marker configuration C (20mm distance)
+    case 2:
+      return 20.0;
   }
   return 0.0;
 }
@@ -348,112 +382,110 @@ void QmitkUSNavigationStepCtUsRegistration::CreateMarkerModelCoordinateSystemPoi
   mitk::Point3D fiducial7;
   mitk::Point3D fiducial8;
 
-
-
   switch (ui->fiducialMarkerConfigurationComboBox->currentIndex())
   {
-    // case 0 is equal to fiducial marker configuration A (10mm distance)
-  case 0:
-    fiducial1[0] = 0;
-    fiducial1[1] = 0;
-    fiducial1[2] = 0;
+      // case 0 is equal to fiducial marker configuration A (10mm distance)
+    case 0:
+      fiducial1[0] = 0;
+      fiducial1[1] = 0;
+      fiducial1[2] = 0;
 
-    fiducial2[0] = 0;
-    fiducial2[1] = 10;
-    fiducial2[2] = 0;
+      fiducial2[0] = 0;
+      fiducial2[1] = 10;
+      fiducial2[2] = 0;
 
-    fiducial3[0] = 10;
-    fiducial3[1] = 0;
-    fiducial3[2] = 0;
+      fiducial3[0] = 10;
+      fiducial3[1] = 0;
+      fiducial3[2] = 0;
 
-    fiducial4[0] = 20;
-    fiducial4[1] = 20;
-    fiducial4[2] = 0;
+      fiducial4[0] = 20;
+      fiducial4[1] = 20;
+      fiducial4[2] = 0;
 
-    fiducial5[0] = 0;
-    fiducial5[1] = 20;
-    fiducial5[2] = 10;
+      fiducial5[0] = 0;
+      fiducial5[1] = 20;
+      fiducial5[2] = 10;
 
-    fiducial6[0] = 10;
-    fiducial6[1] = 20;
-    fiducial6[2] = 10;
+      fiducial6[0] = 10;
+      fiducial6[1] = 20;
+      fiducial6[2] = 10;
 
-    fiducial7[0] = 20;
-    fiducial7[1] = 10;
-    fiducial7[2] = 10;
+      fiducial7[0] = 20;
+      fiducial7[1] = 10;
+      fiducial7[2] = 10;
 
-    fiducial8[0] = 20;
-    fiducial8[1] = 0;
-    fiducial8[2] = 10;
-    break;
-    // case 1 is equal to fiducial marker configuration B (15mm distance)
-  case 1:
-    fiducial1[0] = 0;
-    fiducial1[1] = 0;
-    fiducial1[2] = 0;
+      fiducial8[0] = 20;
+      fiducial8[1] = 0;
+      fiducial8[2] = 10;
+      break;
+      // case 1 is equal to fiducial marker configuration B (15mm distance)
+    case 1:
+      fiducial1[0] = 0;
+      fiducial1[1] = 0;
+      fiducial1[2] = 0;
 
-    fiducial2[0] = 0;
-    fiducial2[1] = 15;
-    fiducial2[2] = 0;
+      fiducial2[0] = 0;
+      fiducial2[1] = 15;
+      fiducial2[2] = 0;
 
-    fiducial3[0] = 15;
-    fiducial3[1] = 0;
-    fiducial3[2] = 0;
+      fiducial3[0] = 15;
+      fiducial3[1] = 0;
+      fiducial3[2] = 0;
 
-    fiducial4[0] = 30;
-    fiducial4[1] = 30;
-    fiducial4[2] = 0;
+      fiducial4[0] = 30;
+      fiducial4[1] = 30;
+      fiducial4[2] = 0;
 
-    fiducial5[0] = 0;
-    fiducial5[1] = 30;
-    fiducial5[2] = 15;
+      fiducial5[0] = 0;
+      fiducial5[1] = 30;
+      fiducial5[2] = 15;
 
-    fiducial6[0] = 15;
-    fiducial6[1] = 30;
-    fiducial6[2] = 15;
+      fiducial6[0] = 15;
+      fiducial6[1] = 30;
+      fiducial6[2] = 15;
 
-    fiducial7[0] = 30;
-    fiducial7[1] = 15;
-    fiducial7[2] = 15;
+      fiducial7[0] = 30;
+      fiducial7[1] = 15;
+      fiducial7[2] = 15;
 
-    fiducial8[0] = 30;
-    fiducial8[1] = 0;
-    fiducial8[2] = 15;
-    break;
-    // case 2 is equal to fiducial marker configuration C (20mm distance)
-  case 2:
-    fiducial1[0] = 0;
-    fiducial1[1] = 0;
-    fiducial1[2] = 0;
+      fiducial8[0] = 30;
+      fiducial8[1] = 0;
+      fiducial8[2] = 15;
+      break;
+      // case 2 is equal to fiducial marker configuration C (20mm distance)
+    case 2:
+      fiducial1[0] = 0;
+      fiducial1[1] = 0;
+      fiducial1[2] = 0;
 
-    fiducial2[0] = 0;
-    fiducial2[1] = 20;
-    fiducial2[2] = 0;
+      fiducial2[0] = 0;
+      fiducial2[1] = 20;
+      fiducial2[2] = 0;
 
-    fiducial3[0] = 20;
-    fiducial3[1] = 0;
-    fiducial3[2] = 0;
+      fiducial3[0] = 20;
+      fiducial3[1] = 0;
+      fiducial3[2] = 0;
 
-    fiducial4[0] = 40;
-    fiducial4[1] = 40;
-    fiducial4[2] = 0;
+      fiducial4[0] = 40;
+      fiducial4[1] = 40;
+      fiducial4[2] = 0;
 
-    fiducial5[0] = 0;
-    fiducial5[1] = 40;
-    fiducial5[2] = 20;
+      fiducial5[0] = 0;
+      fiducial5[1] = 40;
+      fiducial5[2] = 20;
 
-    fiducial6[0] = 20;
-    fiducial6[1] = 40;
-    fiducial6[2] = 20;
+      fiducial6[0] = 20;
+      fiducial6[1] = 40;
+      fiducial6[2] = 20;
 
-    fiducial7[0] = 40;
-    fiducial7[1] = 20;
-    fiducial7[2] = 20;
+      fiducial7[0] = 40;
+      fiducial7[1] = 20;
+      fiducial7[2] = 20;
 
-    fiducial8[0] = 40;
-    fiducial8[1] = 0;
-    fiducial8[2] = 20;
-    break;
+      fiducial8[0] = 40;
+      fiducial8[1] = 0;
+      fiducial8[2] = 20;
+      break;
   }
 
   m_MarkerModelCoordinateSystemPointSet->InsertPoint(0, fiducial1);
@@ -482,7 +514,6 @@ void QmitkUSNavigationStepCtUsRegistration::CreateMarkerModelCoordinateSystemPoi
 
 void QmitkUSNavigationStepCtUsRegistration::InitializePointsToTransformForGroundTruthProtocol()
 {
-
   m_PointsToTransformGroundTruthProtocol.clear();
 
   mitk::Point3D point0mm;
@@ -530,63 +561,75 @@ void QmitkUSNavigationStepCtUsRegistration::CreatePointsToTransformForGroundTrut
 
   switch (ui->fiducialMarkerConfigurationComboBox->currentIndex())
   {
-    // case 0 is equal to fiducial marker configuration A (10mm distance)
-  case 0:
-    MITK_WARN << "For this marker configuration (10mm) there does not exist a point to transform.";
-    break;
-    // case 1 is equal to fiducial marker configuration B (15mm distance)
-  case 1:
-    m_PointsToTransformGroundTruthProtocol.at(0)[0] = 130;  // = 30mm to end of clipping plate + 100 mm to middle axis of measurement plate
-    m_PointsToTransformGroundTruthProtocol.at(0)[1] = 15;
-    m_PointsToTransformGroundTruthProtocol.at(0)[2] = -7;  // = 5mm distance to clipping plate + 2mm to base
+      // case 0 is equal to fiducial marker configuration A (10mm distance)
+    case 0:
+      MITK_WARN << "For this marker configuration (10mm) there does not exist a point to transform.";
+      break;
+      // case 1 is equal to fiducial marker configuration B (15mm distance)
+    case 1:
+      m_PointsToTransformGroundTruthProtocol.at(0)[0] =
+        130; // = 30mm to end of clipping plate + 100 mm to middle axis of measurement plate
+      m_PointsToTransformGroundTruthProtocol.at(0)[1] = 15;
+      m_PointsToTransformGroundTruthProtocol.at(0)[2] = -7; // = 5mm distance to clipping plate + 2mm to base
 
-    m_PointsToTransformGroundTruthProtocol.at(20)[0] = 130;
-    m_PointsToTransformGroundTruthProtocol.at(20)[1] = 15;
-    m_PointsToTransformGroundTruthProtocol.at(20)[2] = -27;  // = 5mm distance to clipping plate + 2mm to base + 20mm depth
+      m_PointsToTransformGroundTruthProtocol.at(20)[0] = 130;
+      m_PointsToTransformGroundTruthProtocol.at(20)[1] = 15;
+      m_PointsToTransformGroundTruthProtocol.at(20)[2] =
+        -27; // = 5mm distance to clipping plate + 2mm to base + 20mm depth
 
-    m_PointsToTransformGroundTruthProtocol.at(40)[0] = 130;
-    m_PointsToTransformGroundTruthProtocol.at(40)[1] = 15;
-    m_PointsToTransformGroundTruthProtocol.at(40)[2] = -47;  // = 5mm distance to clipping plate + 2mm to base + 40mm depth
+      m_PointsToTransformGroundTruthProtocol.at(40)[0] = 130;
+      m_PointsToTransformGroundTruthProtocol.at(40)[1] = 15;
+      m_PointsToTransformGroundTruthProtocol.at(40)[2] =
+        -47; // = 5mm distance to clipping plate + 2mm to base + 40mm depth
 
-    m_PointsToTransformGroundTruthProtocol.at(60)[0] = 130;
-    m_PointsToTransformGroundTruthProtocol.at(60)[1] = 15;
-    m_PointsToTransformGroundTruthProtocol.at(60)[2] = -67;  // = 5mm distance to clipping plate + 2mm to base + 60mm depth
+      m_PointsToTransformGroundTruthProtocol.at(60)[0] = 130;
+      m_PointsToTransformGroundTruthProtocol.at(60)[1] = 15;
+      m_PointsToTransformGroundTruthProtocol.at(60)[2] =
+        -67; // = 5mm distance to clipping plate + 2mm to base + 60mm depth
 
-    m_PointsToTransformGroundTruthProtocol.at(80)[0] = 130;
-    m_PointsToTransformGroundTruthProtocol.at(80)[1] = 15;
-    m_PointsToTransformGroundTruthProtocol.at(80)[2] = -87;  // = 5mm distance to clipping plate + 2mm to base + 80mm depth
+      m_PointsToTransformGroundTruthProtocol.at(80)[0] = 130;
+      m_PointsToTransformGroundTruthProtocol.at(80)[1] = 15;
+      m_PointsToTransformGroundTruthProtocol.at(80)[2] =
+        -87; // = 5mm distance to clipping plate + 2mm to base + 80mm depth
 
-    m_PointsToTransformGroundTruthProtocol.at(100)[0] = 130;
-    m_PointsToTransformGroundTruthProtocol.at(100)[1] = 15;
-    m_PointsToTransformGroundTruthProtocol.at(100)[2] = -107;  // = 5mm distance to clipping plate + 2mm to base + 100mm depth
+      m_PointsToTransformGroundTruthProtocol.at(100)[0] = 130;
+      m_PointsToTransformGroundTruthProtocol.at(100)[1] = 15;
+      m_PointsToTransformGroundTruthProtocol.at(100)[2] =
+        -107; // = 5mm distance to clipping plate + 2mm to base + 100mm depth
 
-    break;
-    // case 2 is equal to fiducial marker configuration C (20mm distance)
-  case 2:
-    m_PointsToTransformGroundTruthProtocol.at(0)[0] = 135;  // = 20 + 15mm to end of clipping plate + 100 mm to middle axis of measurement plate
-    m_PointsToTransformGroundTruthProtocol.at(0)[1] = 20;
-    m_PointsToTransformGroundTruthProtocol.at(0)[2] = -9;  // = 7mm distance to clipping plate + 2mm to base
+      break;
+      // case 2 is equal to fiducial marker configuration C (20mm distance)
+    case 2:
+      m_PointsToTransformGroundTruthProtocol.at(0)[0] =
+        135; // = 20 + 15mm to end of clipping plate + 100 mm to middle axis of measurement plate
+      m_PointsToTransformGroundTruthProtocol.at(0)[1] = 20;
+      m_PointsToTransformGroundTruthProtocol.at(0)[2] = -9; // = 7mm distance to clipping plate + 2mm to base
 
-    m_PointsToTransformGroundTruthProtocol.at(20)[0] = 135;
-    m_PointsToTransformGroundTruthProtocol.at(20)[1] = 20;
-    m_PointsToTransformGroundTruthProtocol.at(20)[2] = -29;  // = 7mm distance to clipping plate + 2mm to base + 20mm depth
+      m_PointsToTransformGroundTruthProtocol.at(20)[0] = 135;
+      m_PointsToTransformGroundTruthProtocol.at(20)[1] = 20;
+      m_PointsToTransformGroundTruthProtocol.at(20)[2] =
+        -29; // = 7mm distance to clipping plate + 2mm to base + 20mm depth
 
-    m_PointsToTransformGroundTruthProtocol.at(40)[0] = 135;
-    m_PointsToTransformGroundTruthProtocol.at(40)[1] = 20;
-    m_PointsToTransformGroundTruthProtocol.at(40)[2] = -49;  // = 7mm distance to clipping plate + 2mm to base + 40mm depth
+      m_PointsToTransformGroundTruthProtocol.at(40)[0] = 135;
+      m_PointsToTransformGroundTruthProtocol.at(40)[1] = 20;
+      m_PointsToTransformGroundTruthProtocol.at(40)[2] =
+        -49; // = 7mm distance to clipping plate + 2mm to base + 40mm depth
 
-    m_PointsToTransformGroundTruthProtocol.at(60)[0] = 135;
-    m_PointsToTransformGroundTruthProtocol.at(60)[1] = 20;
-    m_PointsToTransformGroundTruthProtocol.at(60)[2] = -69;  // = 7mm distance to clipping plate + 2mm to base + 60mm depth
+      m_PointsToTransformGroundTruthProtocol.at(60)[0] = 135;
+      m_PointsToTransformGroundTruthProtocol.at(60)[1] = 20;
+      m_PointsToTransformGroundTruthProtocol.at(60)[2] =
+        -69; // = 7mm distance to clipping plate + 2mm to base + 60mm depth
 
-    m_PointsToTransformGroundTruthProtocol.at(80)[0] = 135;
-    m_PointsToTransformGroundTruthProtocol.at(80)[1] = 20;
-    m_PointsToTransformGroundTruthProtocol.at(80)[2] = -89;  // = 7mm distance to clipping plate + 2mm to base + 80mm depth
+      m_PointsToTransformGroundTruthProtocol.at(80)[0] = 135;
+      m_PointsToTransformGroundTruthProtocol.at(80)[1] = 20;
+      m_PointsToTransformGroundTruthProtocol.at(80)[2] =
+        -89; // = 7mm distance to clipping plate + 2mm to base + 80mm depth
 
-    m_PointsToTransformGroundTruthProtocol.at(100)[0] = 135;
-    m_PointsToTransformGroundTruthProtocol.at(100)[1] = 20;
-    m_PointsToTransformGroundTruthProtocol.at(100)[2] = -109;  // = 7mm distance to clipping plate + 2mm to base + 100mm depth
-    break;
+      m_PointsToTransformGroundTruthProtocol.at(100)[0] = 135;
+      m_PointsToTransformGroundTruthProtocol.at(100)[1] = 20;
+      m_PointsToTransformGroundTruthProtocol.at(100)[2] =
+        -109; // = 7mm distance to clipping plate + 2mm to base + 100mm depth
+      break;
   }
 }
 
@@ -595,69 +638,80 @@ void QmitkUSNavigationStepCtUsRegistration::TransformPointsGroundTruthProtocol()
   if (m_GroundTruthProtocolTransformedPoints.find(0) == m_GroundTruthProtocolTransformedPoints.end())
   {
     mitk::PointSet::Pointer pointSet = mitk::PointSet::New();
-    pointSet->InsertPoint(m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(0)));
+    pointSet->InsertPoint(
+      m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(0)));
     m_GroundTruthProtocolTransformedPoints.insert(std::pair<int, mitk::PointSet::Pointer>(0, pointSet));
   }
   else
   {
-    m_GroundTruthProtocolTransformedPoints.at(0)->InsertPoint(m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(0)));
+    m_GroundTruthProtocolTransformedPoints.at(0)->InsertPoint(
+      m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(0)));
   }
 
   if (m_GroundTruthProtocolTransformedPoints.find(20) == m_GroundTruthProtocolTransformedPoints.end())
   {
     mitk::PointSet::Pointer pointSet = mitk::PointSet::New();
-    pointSet->InsertPoint(m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(20)));
+    pointSet->InsertPoint(
+      m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(20)));
     m_GroundTruthProtocolTransformedPoints.insert(std::pair<int, mitk::PointSet::Pointer>(20, pointSet));
   }
   else
   {
-    m_GroundTruthProtocolTransformedPoints.at(20)->InsertPoint(m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(20)));
+    m_GroundTruthProtocolTransformedPoints.at(20)->InsertPoint(
+      m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(20)));
   }
 
   if (m_GroundTruthProtocolTransformedPoints.find(40) == m_GroundTruthProtocolTransformedPoints.end())
   {
     mitk::PointSet::Pointer pointSet = mitk::PointSet::New();
-    pointSet->InsertPoint(m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(40)));
+    pointSet->InsertPoint(
+      m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(40)));
     m_GroundTruthProtocolTransformedPoints.insert(std::pair<int, mitk::PointSet::Pointer>(40, pointSet));
   }
   else
   {
-    m_GroundTruthProtocolTransformedPoints.at(40)->InsertPoint(m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(40)));
+    m_GroundTruthProtocolTransformedPoints.at(40)->InsertPoint(
+      m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(40)));
   }
 
   if (m_GroundTruthProtocolTransformedPoints.find(60) == m_GroundTruthProtocolTransformedPoints.end())
   {
     mitk::PointSet::Pointer pointSet = mitk::PointSet::New();
-    pointSet->InsertPoint(m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(60)));
+    pointSet->InsertPoint(
+      m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(60)));
     m_GroundTruthProtocolTransformedPoints.insert(std::pair<int, mitk::PointSet::Pointer>(60, pointSet));
   }
   else
   {
-    m_GroundTruthProtocolTransformedPoints.at(60)->InsertPoint(m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(60)));
+    m_GroundTruthProtocolTransformedPoints.at(60)->InsertPoint(
+      m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(60)));
   }
 
   if (m_GroundTruthProtocolTransformedPoints.find(80) == m_GroundTruthProtocolTransformedPoints.end())
   {
     mitk::PointSet::Pointer pointSet = mitk::PointSet::New();
-    pointSet->InsertPoint(m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(80)));
+    pointSet->InsertPoint(
+      m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(80)));
     m_GroundTruthProtocolTransformedPoints.insert(std::pair<int, mitk::PointSet::Pointer>(80, pointSet));
   }
   else
   {
-    m_GroundTruthProtocolTransformedPoints.at(80)->InsertPoint(m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(80)));
+    m_GroundTruthProtocolTransformedPoints.at(80)->InsertPoint(
+      m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(80)));
   }
 
   if (m_GroundTruthProtocolTransformedPoints.find(100) == m_GroundTruthProtocolTransformedPoints.end())
   {
     mitk::PointSet::Pointer pointSet = mitk::PointSet::New();
-    pointSet->InsertPoint(m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(100)));
+    pointSet->InsertPoint(
+      m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(100)));
     m_GroundTruthProtocolTransformedPoints.insert(std::pair<int, mitk::PointSet::Pointer>(100, pointSet));
   }
   else
   {
-    m_GroundTruthProtocolTransformedPoints.at(100)->InsertPoint(m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(100)));
+    m_GroundTruthProtocolTransformedPoints.at(100)->InsertPoint(
+      m_TransformMarkerCSToFloatingImageCS->TransformPoint(m_PointsToTransformGroundTruthProtocol.at(100)));
   }
-
 }
 
 void QmitkUSNavigationStepCtUsRegistration::AddTransformedPointsToDataStorage()
@@ -683,7 +737,7 @@ void QmitkUSNavigationStepCtUsRegistration::AddTransformedPointsToDataStorage()
   std::string nameNode80mm = "GroundTruthProt-Depth80mm";
   std::string nameNode100mm = "GroundTruthProt-Depth100mm";
 
-  //Add transformed points of depth 0mm to the data storage
+  // Add transformed points of depth 0mm to the data storage
   mitk::DataNode::Pointer node0mm = this->GetDataStorage()->GetNamedNode(nameNode0mm);
   if (node0mm.IsNull())
   {
@@ -698,9 +752,9 @@ void QmitkUSNavigationStepCtUsRegistration::AddTransformedPointsToDataStorage()
     this->GetDataStorage()->Modified();
   }
 
-  if(ui->protocolEvaluationTypeComboBox->currentText().compare("PLANE") == 0 )
+  if (ui->protocolEvaluationTypeComboBox->currentText().compare("PLANE") == 0)
   {
-    //Add transformed points of depth 20mm to the data storage
+    // Add transformed points of depth 20mm to the data storage
     mitk::DataNode::Pointer node20mm = this->GetDataStorage()->GetNamedNode(nameNode20mm);
     if (node20mm.IsNull())
     {
@@ -715,7 +769,7 @@ void QmitkUSNavigationStepCtUsRegistration::AddTransformedPointsToDataStorage()
       this->GetDataStorage()->Modified();
     }
 
-    //Add transformed points of depth 40mm to the data storage
+    // Add transformed points of depth 40mm to the data storage
     mitk::DataNode::Pointer node40mm = this->GetDataStorage()->GetNamedNode(nameNode40mm);
     if (node40mm.IsNull())
     {
@@ -730,7 +784,7 @@ void QmitkUSNavigationStepCtUsRegistration::AddTransformedPointsToDataStorage()
       this->GetDataStorage()->Modified();
     }
 
-    //Add transformed points of depth 60mm to the data storage
+    // Add transformed points of depth 60mm to the data storage
     mitk::DataNode::Pointer node60mm = this->GetDataStorage()->GetNamedNode(nameNode60mm);
     if (node60mm.IsNull())
     {
@@ -745,7 +799,7 @@ void QmitkUSNavigationStepCtUsRegistration::AddTransformedPointsToDataStorage()
       this->GetDataStorage()->Modified();
     }
 
-    //Add transformed points of depth 80mm to the data storage
+    // Add transformed points of depth 80mm to the data storage
     mitk::DataNode::Pointer node80mm = this->GetDataStorage()->GetNamedNode(nameNode80mm);
     if (node80mm.IsNull())
     {
@@ -760,7 +814,7 @@ void QmitkUSNavigationStepCtUsRegistration::AddTransformedPointsToDataStorage()
       this->GetDataStorage()->Modified();
     }
 
-    //Add transformed points of depth 100mm to the data storage
+    // Add transformed points of depth 100mm to the data storage
     mitk::DataNode::Pointer node100mm = this->GetDataStorage()->GetNamedNode(nameNode100mm);
     if (node100mm.IsNull())
     {
@@ -775,7 +829,7 @@ void QmitkUSNavigationStepCtUsRegistration::AddTransformedPointsToDataStorage()
       this->GetDataStorage()->Modified();
     }
   }
-  //Do a global reinit
+  // Do a global reinit
   mitk::RenderingManager::GetInstance()->InitializeViewsByBoundingObjects(this->GetDataStorage());
 }
 
@@ -798,7 +852,8 @@ double QmitkUSNavigationStepCtUsRegistration::CalculateStandardDeviationOfFRE(do
   {
     variance += ((meanFRE - m_GroundTruthProtocolFRE[counter]) * (meanFRE - m_GroundTruthProtocolFRE[counter]));
   }
-  variance /= m_GroundTruthProtocolFRE.size(); // calculate the empirical variance (n) and not the sampling variance (n-1)
+  variance /=
+    m_GroundTruthProtocolFRE.size(); // calculate the empirical variance (n) and not the sampling variance (n-1)
 
   return sqrt(variance);
 }
@@ -806,11 +861,11 @@ double QmitkUSNavigationStepCtUsRegistration::CalculateStandardDeviationOfFRE(do
 void QmitkUSNavigationStepCtUsRegistration::CalculateGroundTruthProtocolTRE()
 {
   if (m_GroundTruthProtocolTransformedPoints.find(0) == m_GroundTruthProtocolTransformedPoints.end() ||
-    m_GroundTruthProtocolTransformedPoints.find(20) == m_GroundTruthProtocolTransformedPoints.end() ||
-    m_GroundTruthProtocolTransformedPoints.find(40) == m_GroundTruthProtocolTransformedPoints.end() ||
-    m_GroundTruthProtocolTransformedPoints.find(60) == m_GroundTruthProtocolTransformedPoints.end() ||
-    m_GroundTruthProtocolTransformedPoints.find(80) == m_GroundTruthProtocolTransformedPoints.end() ||
-    m_GroundTruthProtocolTransformedPoints.find(100) == m_GroundTruthProtocolTransformedPoints.end())
+      m_GroundTruthProtocolTransformedPoints.find(20) == m_GroundTruthProtocolTransformedPoints.end() ||
+      m_GroundTruthProtocolTransformedPoints.find(40) == m_GroundTruthProtocolTransformedPoints.end() ||
+      m_GroundTruthProtocolTransformedPoints.find(60) == m_GroundTruthProtocolTransformedPoints.end() ||
+      m_GroundTruthProtocolTransformedPoints.find(80) == m_GroundTruthProtocolTransformedPoints.end() ||
+      m_GroundTruthProtocolTransformedPoints.find(100) == m_GroundTruthProtocolTransformedPoints.end())
   {
     QMessageBox msgBox;
     msgBox.setText("Cannot calculate TRE of Ground-Truth-Protocol because points were not transformed.");
@@ -825,7 +880,7 @@ void QmitkUSNavigationStepCtUsRegistration::CalculateGroundTruthProtocolTRE()
        m_GroundTruthProtocolTransformedPoints.find(counter) != m_GroundTruthProtocolTransformedPoints.end();
        counter += 20)
   {
-    //calculate the middle point of  the point set
+    // calculate the middle point of  the point set
     mitk::PointSet::Pointer pointSet = m_GroundTruthProtocolTransformedPoints.at(counter);
     mitk::Point3D middlePoint;
     middlePoint[0] = 0.0;
@@ -843,7 +898,7 @@ void QmitkUSNavigationStepCtUsRegistration::CalculateGroundTruthProtocolTRE()
     middlePoint[2] /= pointSet->GetSize();
     MITK_INFO << "Calculated MiddlePoint: " << middlePoint;
 
-    //sum up the euclidean distances between the middle point and each transformed point
+    // sum up the euclidean distances between the middle point and each transformed point
     double meanDistance = 0.0;
     for (int position = 0; position < pointSet->GetSize(); ++position)
     {
@@ -856,11 +911,9 @@ void QmitkUSNavigationStepCtUsRegistration::CalculateGroundTruthProtocolTRE()
     m_GroundTruthProtocolTRE.insert(std::pair<int, double>(counter, sqrt(meanDistance)));
     MITK_INFO << "Ground-Truth-Protocol TRE: " << sqrt(meanDistance);
   }
-
 }
 
-void QmitkUSNavigationStepCtUsRegistration::EliminateTooSmallLabeledObjects(
-  ImageType::Pointer binaryImage)
+void QmitkUSNavigationStepCtUsRegistration::EliminateTooSmallLabeledObjects(ImageType::Pointer binaryImage)
 {
   BinaryImageToShapeLabelMapFilterType::OutputImageType::Pointer labelMap =
     m_BinaryImageToShapeLabelMapFilter->GetOutput();
@@ -895,12 +948,12 @@ void QmitkUSNavigationStepCtUsRegistration::EliminateTooSmallLabeledObjects(
   for (int i = labelMap->GetNumberOfLabelObjects() - 1; i >= 0; --i)
   {
     // Get the ith region
-    BinaryImageToShapeLabelMapFilterType::OutputImageType::LabelObjectType* labelObject = labelMap->GetNthLabelObject(i);
-    //MITK_INFO << "Object " << i << " contains " << labelObject->Size() << " pixel";
+    BinaryImageToShapeLabelMapFilterType::OutputImageType::LabelObjectType *labelObject =
+      labelMap->GetNthLabelObject(i);
 
-    //TODO: Threshold-Wert evtl. experimentell besser abstimmen,
+    // TODO: Threshold-Wert evtl. experimentell besser abstimmen,
     //      um zu verhindern, dass durch Threshold wahre Fiducial-Kandidaten elimiert werden.
-    if (labelObject->Size() < numberOfPixels * 0.8 || labelObject->Size() > numberOfPixels * 2)
+    if (labelObject->Size() < numberOfPixels * 0.6 || labelObject->Size() > numberOfPixels * 2)
     {
       /*for (unsigned int pixelId = 0; pixelId < labelObject->Size(); pixelId++)
       {
@@ -913,29 +966,29 @@ void QmitkUSNavigationStepCtUsRegistration::EliminateTooSmallLabeledObjects(
 
 bool QmitkUSNavigationStepCtUsRegistration::EliminateFiducialCandidatesByEuclideanDistances()
 {
-  if (m_CentroidsOfFiducialCandidates.size() < NUMBER_FIDUCIALS_NEEDED)
+  if (m_FiducialCandidates.size() < NUMBER_FIDUCIALS_NEEDED)
   {
     return false;
   }
 
-  for (unsigned int counter = 0; counter < m_CentroidsOfFiducialCandidates.size(); ++counter)
+  for (unsigned int counter = 0; counter < m_FiducialCandidates.size(); ++counter)
   {
     int amountOfAcceptedFiducials = 0;
-    mitk::Point3D fiducialCentroid(m_CentroidsOfFiducialCandidates.at(counter));
-    //Loop through all fiducial candidates and calculate the distance between the chosen fiducial
+    mitk::Point3D fiducialCentroid(m_FiducialCandidates.at(counter).first);
+    // Loop through all fiducial candidates and calculate the distance between the chosen fiducial
     // candidate and the other candidates. For each candidate with a right distance between
     // Configuration A: 7.93mm and 31.0mm (10 mm distance between fiducial centers) or
     // Configuration B: 11.895mm and 45.0mm (15 mm distance between fiducial centers) or
     // Configuration C: 15.86mm and 59.0mm (20 mm distance between fiducial centers)
     //
     // increase the amountOfAcceptedFiducials.
-    for (unsigned int position = 0; position < m_CentroidsOfFiducialCandidates.size(); ++position)
+    for (unsigned int position = 0; position < m_FiducialCandidates.size(); ++position)
     {
       if (position == counter)
       {
         continue;
       }
-      mitk::Point3D otherCentroid(m_CentroidsOfFiducialCandidates.at(position));
+      mitk::Point3D otherCentroid(m_FiducialCandidates.at(position).first);
       double distance = fiducialCentroid.EuclideanDistanceTo(otherCentroid);
 
       switch (ui->fiducialMarkerConfigurationComboBox->currentIndex())
@@ -963,14 +1016,13 @@ bool QmitkUSNavigationStepCtUsRegistration::EliminateFiducialCandidatesByEuclide
           break;
       }
     }
-    //The amountOfAcceptedFiducials must be at least 7. Otherwise delete the fiducial candidate
+    // The amountOfAcceptedFiducials must be at least 7. Otherwise delete the fiducial candidate
     // from the list of candidates.
     if (amountOfAcceptedFiducials < NUMBER_FIDUCIALS_NEEDED - 1)
     {
-      MITK_INFO << "Deleting fiducial candidate at position: " <<
-        m_CentroidsOfFiducialCandidates.at(counter);
-      m_CentroidsOfFiducialCandidates.erase(m_CentroidsOfFiducialCandidates.begin() + counter);
-      if (m_CentroidsOfFiducialCandidates.size() < NUMBER_FIDUCIALS_NEEDED )
+      MITK_INFO << "Deleting fiducial candidate at position: " << m_FiducialCandidates.at(counter).first;
+      m_FiducialCandidates.erase(m_FiducialCandidates.begin() + counter);
+      if (m_FiducialCandidates.size() < NUMBER_FIDUCIALS_NEEDED)
       {
         return false;
       }
@@ -978,10 +1030,80 @@ bool QmitkUSNavigationStepCtUsRegistration::EliminateFiducialCandidatesByEuclide
     }
   }
 
-  //Classify the rested fiducial candidates by its characteristic Euclidean distances
+  // Classify the rested fiducial candidates by its characteristic Euclidean distances
   // between the canidates and remove all candidates with a false distance configuration:
   this->ClassifyFiducialCandidates();
   return true;
+}
+
+void QmitkUSNavigationStepCtUsRegistration::EliminateNearFiducialCandidatesByMaxDistanceToCentroids()
+{
+  std::vector<std::vector<double>> distanceVectorsFiducials;
+  this->CalculateDistancesBetweenFiducials(distanceVectorsFiducials);
+
+  double limit;
+  switch (ui->fiducialMarkerConfigurationComboBox->currentIndex())
+  {
+    // case 0 is equal to fiducial marker configuration A (10mm distance)
+    case 0:
+      limit = 7.5;
+      break;
+
+    // case 1 (15mm distance) or case 2 (20mm distance)
+    default:
+      limit = 10.0;
+  }
+
+  std::vector<unsigned int> indices_1;
+  std::vector<unsigned int> indices_2;
+  //Find all pairs of fiducial candidates, whose euclidean distance is smaller than
+  // the above defined limit value. As one fiducial candidate of each pair does not
+  // correspond to a true fiducial, these have to be determined in the following
+  for (unsigned int i = 0; i < distanceVectorsFiducials.size(); ++i)
+  {
+    if (distanceVectorsFiducials.at(i).at(0) < 10.0)
+    {
+      for (unsigned int index_rest_of_vector = i + 1; index_rest_of_vector < distanceVectorsFiducials.size();
+           ++index_rest_of_vector)
+      {
+        if (distanceVectorsFiducials.at(i).at(0) == distanceVectorsFiducials.at(index_rest_of_vector).at(0))
+        {
+          indices_1.push_back(i);
+          indices_2.push_back(index_rest_of_vector);
+          continue;
+        }
+      }
+    }
+  }
+
+  //Determine the maximum distance to the centroid of the fiducial candidate
+  // The true fiducial corresponds to the fiducial candidate with a smaller
+  // maximum distance to the centroid.
+  std::vector<unsigned int> candidateIndicesToRemove;
+  for (unsigned int count = 0; count < indices_1.size(); ++count)
+  {
+    double maxDistance_1 = this->GetMaxDistanceToCentroidOfFiducialCandidate(indices_1.at(count));
+    double maxDistance_2 = this->GetMaxDistanceToCentroidOfFiducialCandidate(indices_2.at(count));
+    MITK_INFO << "maxDinstance 1 = " << maxDistance_1 << " | maxDistance 2 = " << maxDistance_2;
+    if (maxDistance_1 > maxDistance_2)
+    {
+      candidateIndicesToRemove.push_back(indices_1.at(count));
+    }
+    else
+    {
+      candidateIndicesToRemove.push_back(indices_2.at(count));
+    }
+  }
+  // Sort the distances from low to high indices
+  std::sort(candidateIndicesToRemove.begin(), candidateIndicesToRemove.end());
+
+  //Remove false fiducial candidates
+  for (int count = candidateIndicesToRemove.size() - 1; count >= 0; --count)
+  {
+    MITK_INFO << "Removing fiducial candidate at index " << candidateIndicesToRemove.at(count) << " with centroid "
+              << m_FiducialCandidates.at(candidateIndicesToRemove.at(count)).first;
+    m_FiducialCandidates.erase(m_FiducialCandidates.begin() + candidateIndicesToRemove.at(count));
+  }
 }
 
 void QmitkUSNavigationStepCtUsRegistration::ClassifyFiducialCandidates()
@@ -993,12 +1115,12 @@ void QmitkUSNavigationStepCtUsRegistration::ClassifyFiducialCandidates()
 
   for (unsigned int counter = 0; counter < distanceVectorsFiducials.size(); ++counter)
   {
-    int distanceA = 0;      // => 10,00mm distance
-    int distanceB = 0;      // => 14,14mm distance
-    int distanceC = 0;      // => 17,32mm distance
-    int distanceD = 0;      // => 22,36mm distance
-    int distanceE = 0;      // => 24,49mm distance
-    int distanceF = 0;      // => 28,28mm distance
+    int distanceA = 0; // => 10,00mm distance
+    int distanceB = 0; // => 14,14mm distance
+    int distanceC = 0; // => 17,32mm distance
+    int distanceD = 0; // => 22,36mm distance
+    int distanceE = 0; // => 24,49mm distance
+    int distanceF = 0; // => 28,28mm distance
 
     std::vector<double> &distances = distanceVectorsFiducials.at(counter);
     for (unsigned int number = 0; number < distances.size(); ++number)
@@ -1032,7 +1154,7 @@ void QmitkUSNavigationStepCtUsRegistration::ClassifyFiducialCandidates()
           {
             ++distanceF;
           }
-        break;
+          break;
 
         // case 1 is equal to fiducial marker configuration B (15mm distance)
         case 1:
@@ -1068,7 +1190,7 @@ void QmitkUSNavigationStepCtUsRegistration::ClassifyFiducialCandidates()
           {
             ++distanceF;
           }
-        break;
+          break;
 
         // case 2 is equal to fiducial marker configuration C (20mm distance)
         case 2:
@@ -1096,19 +1218,19 @@ void QmitkUSNavigationStepCtUsRegistration::ClassifyFiducialCandidates()
           {
             ++distanceF;
           }
-        break;
+          break;
       }
-    }// End for-loop distances-vector
+    } // End for-loop distances-vector
 
-    //Now, having looped through all distances of one fiducial candidate, check
+    // Now, having looped through all distances of one fiducial candidate, check
     // if the combination of different distances is known. The >= is due to the
     // possible occurrence of other fiducial candidates that have an distance equal to
     // one of the distances A - E. However, false fiducial candidates outside
     // the fiducial marker does not have the right distance configuration:
     if (((distanceA >= 2 && distanceD >= 2 && distanceE >= 2 && distanceF >= 1) ||
-      (distanceA >= 1 && distanceB >= 2 && distanceC >= 1 && distanceD >= 2 && distanceE >= 1) ||
-      (distanceB >= 2 && distanceD >= 4 && distanceF >= 1) ||
-      (distanceA >= 1 && distanceB >= 1 && distanceD >= 3 && distanceE >= 1 && distanceF >= 1)) == false)
+         (distanceA >= 1 && distanceB >= 2 && distanceC >= 1 && distanceD >= 2 && distanceE >= 1) ||
+         (distanceB >= 2 && distanceD >= 4 && distanceF >= 1) ||
+         (distanceA >= 1 && distanceB >= 1 && distanceD >= 3 && distanceE >= 1 && distanceF >= 1)) == false)
     {
       MITK_INFO << "Detected fiducial candidate with unknown distance configuration.";
       fiducialCandidatesToBeRemoved.push_back(counter);
@@ -1117,8 +1239,7 @@ void QmitkUSNavigationStepCtUsRegistration::ClassifyFiducialCandidates()
   for (int count = fiducialCandidatesToBeRemoved.size() - 1; count >= 0; --count)
   {
     MITK_INFO << "Removing fiducial candidate " << fiducialCandidatesToBeRemoved.at(count);
-    m_CentroidsOfFiducialCandidates.erase(m_CentroidsOfFiducialCandidates.begin()
-                                          + fiducialCandidatesToBeRemoved.at(count));
+    m_FiducialCandidates.erase(m_FiducialCandidates.begin() + fiducialCandidatesToBeRemoved.at(count));
   }
 }
 
@@ -1130,16 +1251,18 @@ void QmitkUSNavigationStepCtUsRegistration::GetCentroidsOfLabeledObjects()
   for (int i = labelMap->GetNumberOfLabelObjects() - 1; i >= 0; --i)
   {
     // Get the ith region
-    BinaryImageToShapeLabelMapFilterType::OutputImageType::LabelObjectType* labelObject = labelMap->GetNthLabelObject(i);
+    ShapeLabelObjectType *labelObject = labelMap->GetNthLabelObject(i);
 
     mitk::Vector3D centroid;
     centroid[0] = labelObject->GetCentroid()[0];
     centroid[1] = labelObject->GetCentroid()[1];
     centroid[2] = labelObject->GetCentroid()[2];
-    m_CentroidsOfFiducialCandidates.push_back(centroid);
-    //MITK_INFO << "Position: " << centroid << " | object " << i << " contains " << labelObject->Size() << " pixel";
+
+    m_FiducialCandidates.push_back(FiducialCandidatePairType(centroid, labelObject));
+
+    MITK_INFO << "Position: " << centroid << " | object " << i << " contains " << labelObject->Size() << " pixel";
   }
-  //evtl. for later: itk::LabelMapOverlayImageFilter
+  // evtl. for later: itk::LabelMapOverlayImageFilter
 }
 
 void QmitkUSNavigationStepCtUsRegistration::NumerateFiducialMarks()
@@ -1155,6 +1278,7 @@ void QmitkUSNavigationStepCtUsRegistration::NumerateFiducialMarks()
 
   std::vector<std::vector<double>> distanceVectorsFiducials;
   this->CalculateDistancesBetweenFiducials(distanceVectorsFiducials);
+
   successFiducialNo1 = this->FindFiducialNo1(distanceVectorsFiducials);
   successFiducialNo4 = this->FindFiducialNo4(distanceVectorsFiducials);
   successFiducialNo2And3 = this->FindFiducialNo2And3();
@@ -1163,8 +1287,8 @@ void QmitkUSNavigationStepCtUsRegistration::NumerateFiducialMarks()
   successFiducialNo6 = this->FindFiducialNo6();
   successFiducialNo7 = this->FindFiducialNo7();
 
-  if (!successFiducialNo1 || !successFiducialNo4 || !successFiducialNo2And3 ||
-    !successFiducialNo5 || !successFiducialNo8 || !successFiducialNo6 || !successFiducialNo7)
+  if (!successFiducialNo1 || !successFiducialNo4 || !successFiducialNo2And3 || !successFiducialNo5 ||
+      !successFiducialNo8 || !successFiducialNo6 || !successFiducialNo7)
   {
     QMessageBox msgBox;
     msgBox.setText("Cannot numerate/localize all fiducials successfully.");
@@ -1185,7 +1309,7 @@ void QmitkUSNavigationStepCtUsRegistration::NumerateFiducialMarks()
   {
     m_MarkerFloatingImageCoordinateSystemPointSet->InsertPoint(counter - 1, m_FiducialMarkerCentroids.at(counter));
   }
-  if( !m_PerformingGroundTruthProtocolEvaluation )
+  if (!m_PerformingGroundTruthProtocolEvaluation)
   {
     mitk::DataNode::Pointer node = mitk::DataNode::New();
     node->SetData(m_MarkerFloatingImageCoordinateSystemPointSet);
@@ -1195,46 +1319,66 @@ void QmitkUSNavigationStepCtUsRegistration::NumerateFiducialMarks()
   }
 }
 
-void QmitkUSNavigationStepCtUsRegistration::CalculateDistancesBetweenFiducials(std::vector<std::vector<double>>& distanceVectorsFiducials)
+void QmitkUSNavigationStepCtUsRegistration::CalculateDistancesBetweenFiducials(
+  std::vector<std::vector<double>> &distanceVectorsFiducials)
 {
   std::vector<double> distancesBetweenFiducials;
 
-  for (unsigned int i = 0; i < m_CentroidsOfFiducialCandidates.size(); ++i)
+  for (unsigned int i = 0; i < m_FiducialCandidates.size(); ++i)
   {
     distancesBetweenFiducials.clear();
-    mitk::Point3D fiducialCentroid(m_CentroidsOfFiducialCandidates.at(i));
-    for (unsigned int n = 0; n < m_CentroidsOfFiducialCandidates.size(); ++n)
+    mitk::Point3D fiducialCentroid(m_FiducialCandidates.at(i).first);
+    for (unsigned int n = 0; n < m_FiducialCandidates.size(); ++n)
     {
-      mitk::Point3D otherCentroid(m_CentroidsOfFiducialCandidates.at(n));
+      mitk::Point3D otherCentroid(m_FiducialCandidates.at(n).first);
       distancesBetweenFiducials.push_back(fiducialCentroid.EuclideanDistanceTo(otherCentroid));
     }
-    //Sort the distances from low to big numbers
+    // Sort the distances from low to big numbers
     std::sort(distancesBetweenFiducials.begin(), distancesBetweenFiducials.end());
-    //First entry of the distance vector must be 0, so erase it
+    // First entry of the distance vector must be 0, so erase it
     if (distancesBetweenFiducials.at(0) == 0.0)
     {
       distancesBetweenFiducials.erase(distancesBetweenFiducials.begin());
     }
-    //Add the distance vector to the collecting distances vector
+    // Add the distance vector to the collecting distances vector
     distanceVectorsFiducials.push_back(distancesBetweenFiducials);
   }
 
-  for (unsigned int i = 0; i < distanceVectorsFiducials.size(); ++i)
+  //Uncomment this block of code for development purposes:
+  /*for (unsigned int i = 0; i < distanceVectorsFiducials.size(); ++i)
   {
-    //MITK_INFO << "Vector " << i << ":";
+    MITK_INFO << "Vector " << i << ":";
     for (unsigned int k = 0; k < distanceVectorsFiducials.at(i).size(); ++k)
     {
-      //MITK_INFO << distanceVectorsFiducials.at(i).at(k);
+      MITK_INFO << distanceVectorsFiducials.at(i).at(k);
     }
-  }
+  }*/
 }
 
-bool QmitkUSNavigationStepCtUsRegistration::FindFiducialNo1(std::vector<std::vector<double>>& distanceVectorsFiducials)
+double QmitkUSNavigationStepCtUsRegistration::GetMaxDistanceToCentroidOfFiducialCandidate(unsigned int &index)
+{
+  mitk::Point3D centroid(m_FiducialCandidates.at(index).first);
+  mitk::Point3D pixelPoint;
+  ShapeLabelObjectType *labelObject = m_FiducialCandidates.at(index).second;
+  double maxDistance = 0.0;
+  double distance = 0.0;
+
+  for (unsigned int pixelId = 0; pixelId < labelObject->Size(); pixelId++)
+  {
+    m_FloatingImage->GetGeometry()->IndexToWorld(labelObject->GetIndex(pixelId), pixelPoint);
+    distance = centroid.EuclideanDistanceTo(pixelPoint);
+    maxDistance = maxDistance < distance ? distance : maxDistance;
+  }
+
+  return maxDistance;
+}
+
+bool QmitkUSNavigationStepCtUsRegistration::FindFiducialNo1(std::vector<std::vector<double>> &distanceVectorsFiducials)
 {
   for (unsigned int i = 0; i < distanceVectorsFiducials.size(); ++i)
   {
     std::vector<double> &distances = distanceVectorsFiducials.at(i);
-    if (distances.size() < NUMBER_FIDUCIALS_NEEDED - 1 )
+    if (distances.size() < NUMBER_FIDUCIALS_NEEDED - 1)
     {
       MITK_WARN << "Cannot find fiducial 1, there aren't found enough fiducial candidates.";
       return false;
@@ -1245,9 +1389,9 @@ bool QmitkUSNavigationStepCtUsRegistration::FindFiducialNo1(std::vector<std::vec
         distances.at(1) <= characteristicDistanceAWithUpperMargin)
     {
       MITK_INFO << "Found Fiducial 1 (PointSet number " << i << ")";
-      m_FiducialMarkerCentroids.insert( std::pair<int,mitk::Vector3D>(1, m_CentroidsOfFiducialCandidates.at(i)));
+      m_FiducialMarkerCentroids.insert(std::pair<int, mitk::Vector3D>(1, m_FiducialCandidates.at(i).first));
       distanceVectorsFiducials.erase(distanceVectorsFiducials.begin() + i);
-      m_CentroidsOfFiducialCandidates.erase(m_CentroidsOfFiducialCandidates.begin() + i);
+      m_FiducialCandidates.erase(m_FiducialCandidates.begin() + i);
       return true;
     }
   }
@@ -1256,7 +1400,7 @@ bool QmitkUSNavigationStepCtUsRegistration::FindFiducialNo1(std::vector<std::vec
 
 bool QmitkUSNavigationStepCtUsRegistration::FindFiducialNo2And3()
 {
-  if (m_FiducialMarkerCentroids.find(1) == m_FiducialMarkerCentroids.end() )
+  if (m_FiducialMarkerCentroids.find(1) == m_FiducialMarkerCentroids.end())
   {
     MITK_WARN << "Cannot find fiducial No 2 and 3. Before must be found fiducial No 1.";
     return false;
@@ -1272,29 +1416,29 @@ bool QmitkUSNavigationStepCtUsRegistration::FindFiducialNo2And3()
   mitk::Vector3D vectorFiducial1ToFiducialA;
   mitk::Vector3D vectorFiducial1ToFiducialB;
 
-  for (unsigned int i = 0; i < m_CentroidsOfFiducialCandidates.size(); ++i)
+  for (unsigned int i = 0; i < m_FiducialCandidates.size(); ++i)
   {
-    mitk::Point3D fiducialCentroid(m_CentroidsOfFiducialCandidates.at(i));
+    mitk::Point3D fiducialCentroid(m_FiducialCandidates.at(i).first);
     double distance = fiducialNo1.EuclideanDistanceTo(fiducialCentroid);
     if (distance <= this->GetCharacteristicDistanceAWithUpperMargin())
     {
-      fiducialVectorA = m_CentroidsOfFiducialCandidates.at(i);
+      fiducialVectorA = m_FiducialCandidates.at(i).first;
       fiducialPointA = fiducialCentroid;
-      m_CentroidsOfFiducialCandidates.erase(m_CentroidsOfFiducialCandidates.begin() + i);
+      m_FiducialCandidates.erase(m_FiducialCandidates.begin() + i);
       foundFiducialA = true;
       break;
     }
   }
 
-  for (unsigned int i = 0; i < m_CentroidsOfFiducialCandidates.size(); ++i)
+  for (unsigned int i = 0; i < m_FiducialCandidates.size(); ++i)
   {
-    mitk::Point3D fiducialCentroid(m_CentroidsOfFiducialCandidates.at(i));
+    mitk::Point3D fiducialCentroid(m_FiducialCandidates.at(i).first);
     double distance = fiducialNo1.EuclideanDistanceTo(fiducialCentroid);
     if (distance <= this->GetCharacteristicDistanceAWithUpperMargin())
     {
-      fiducialVectorB = m_CentroidsOfFiducialCandidates.at(i);
+      fiducialVectorB = m_FiducialCandidates.at(i).first;
       fiducialPointB = fiducialCentroid;
-      m_CentroidsOfFiducialCandidates.erase(m_CentroidsOfFiducialCandidates.begin() + i);
+      m_FiducialCandidates.erase(m_FiducialCandidates.begin() + i);
       foundFiducialB = true;
       break;
     }
@@ -1305,7 +1449,7 @@ bool QmitkUSNavigationStepCtUsRegistration::FindFiducialNo2And3()
     MITK_WARN << "Cannot identify fiducial candidates 2 and 3";
     return false;
   }
-  else if (m_CentroidsOfFiducialCandidates.size() == 0)
+  else if (m_FiducialCandidates.size() == 0)
   {
     MITK_WARN << "Too less fiducials detected. Cannot identify fiducial candidates 2 and 3";
     return false;
@@ -1314,16 +1458,18 @@ bool QmitkUSNavigationStepCtUsRegistration::FindFiducialNo2And3()
   vectorFiducial1ToFiducialA = fiducialVectorA - m_FiducialMarkerCentroids.at(1);
   vectorFiducial1ToFiducialB = fiducialVectorB - m_FiducialMarkerCentroids.at(1);
 
-  vnl_vector<double> crossProductVnl = vnl_cross_3d(vectorFiducial1ToFiducialA.GetVnlVector(), vectorFiducial1ToFiducialB.GetVnlVector());
+  vnl_vector<double> crossProductVnl =
+    vnl_cross_3d(vectorFiducial1ToFiducialA.GetVnlVector(), vectorFiducial1ToFiducialB.GetVnlVector());
   mitk::Vector3D crossProduct;
   crossProduct.SetVnlVector(crossProductVnl);
 
-  mitk::Vector3D vectorFiducial1ToRandomLeftFiducial = m_CentroidsOfFiducialCandidates.at(0) - m_FiducialMarkerCentroids.at(1);
+  mitk::Vector3D vectorFiducial1ToRandomLeftFiducial =
+    m_FiducialCandidates.at(0).first - m_FiducialMarkerCentroids.at(1);
 
   double scalarProduct = (crossProduct * vectorFiducial1ToRandomLeftFiducial) /
                          (crossProduct.GetNorm() * vectorFiducial1ToRandomLeftFiducial.GetNorm());
 
-  double alpha = acos(scalarProduct) * 57.29578; //Transform into degree
+  double alpha = acos(scalarProduct) * 57.29578; // Transform into degree
   MITK_INFO << "Scalar Product = " << alpha;
 
   if (alpha <= 90)
@@ -1343,7 +1489,7 @@ bool QmitkUSNavigationStepCtUsRegistration::FindFiducialNo2And3()
   return true;
 }
 
-bool QmitkUSNavigationStepCtUsRegistration::FindFiducialNo4(std::vector<std::vector<double>>& distanceVectorsFiducials)
+bool QmitkUSNavigationStepCtUsRegistration::FindFiducialNo4(std::vector<std::vector<double>> &distanceVectorsFiducials)
 {
   double characteristicDistanceBWithLowerMargin = this->GetCharacteristicDistanceBWithLowerMargin();
   double characteristicDistanceBWithUpperMargin = this->GetCharacteristicDistanceBWithUpperMargin();
@@ -1363,9 +1509,9 @@ bool QmitkUSNavigationStepCtUsRegistration::FindFiducialNo4(std::vector<std::vec
         distances.at(1) <= characteristicDistanceBWithUpperMargin)
     {
       MITK_INFO << "Found Fiducial 4 (PointSet number " << i << ")";
-      m_FiducialMarkerCentroids.insert(std::pair<int, mitk::Vector3D>(4, m_CentroidsOfFiducialCandidates.at(i)));
+      m_FiducialMarkerCentroids.insert(std::pair<int, mitk::Vector3D>(4, m_FiducialCandidates.at(i).first));
       distanceVectorsFiducials.erase(distanceVectorsFiducials.begin() + i);
-      m_CentroidsOfFiducialCandidates.erase(m_CentroidsOfFiducialCandidates.begin() + i);
+      m_FiducialCandidates.erase(m_FiducialCandidates.begin() + i);
       return true;
     }
   }
@@ -1384,14 +1530,14 @@ bool QmitkUSNavigationStepCtUsRegistration::FindFiducialNo5()
 
   mitk::Point3D fiducialNo2(m_FiducialMarkerCentroids.at(2));
 
-  for (unsigned int counter = 0; counter < m_CentroidsOfFiducialCandidates.size(); ++counter)
+  for (unsigned int counter = 0; counter < m_FiducialCandidates.size(); ++counter)
   {
-    mitk::Point3D fiducialCentroid(m_CentroidsOfFiducialCandidates.at(counter));
+    mitk::Point3D fiducialCentroid(m_FiducialCandidates.at(counter).first);
     double distance = fiducialNo2.EuclideanDistanceTo(fiducialCentroid);
     if (distance <= characteristicDistanceBWithUpperMargin)
     {
-      m_FiducialMarkerCentroids[5] = m_CentroidsOfFiducialCandidates.at(counter);
-      m_CentroidsOfFiducialCandidates.erase(m_CentroidsOfFiducialCandidates.begin() + counter);
+      m_FiducialMarkerCentroids[5] = m_FiducialCandidates.at(counter).first;
+      m_FiducialCandidates.erase(m_FiducialCandidates.begin() + counter);
       MITK_INFO << "Found Fiducial No 5, PointSet: " << m_FiducialMarkerCentroids[5];
       return true;
     }
@@ -1413,14 +1559,14 @@ bool QmitkUSNavigationStepCtUsRegistration::FindFiducialNo6()
 
   mitk::Point3D fiducialNo5(m_FiducialMarkerCentroids.at(5));
 
-  for (unsigned int counter = 0; counter < m_CentroidsOfFiducialCandidates.size(); ++counter)
+  for (unsigned int counter = 0; counter < m_FiducialCandidates.size(); ++counter)
   {
-    mitk::Point3D fiducialCentroid(m_CentroidsOfFiducialCandidates.at(counter));
+    mitk::Point3D fiducialCentroid(m_FiducialCandidates.at(counter).first);
     double distance = fiducialNo5.EuclideanDistanceTo(fiducialCentroid);
     if (distance <= characteristicDistanceAWithUpperMargin)
     {
-      m_FiducialMarkerCentroids[6] = m_CentroidsOfFiducialCandidates.at(counter);
-      m_CentroidsOfFiducialCandidates.erase(m_CentroidsOfFiducialCandidates.begin() + counter);
+      m_FiducialMarkerCentroids[6] = m_FiducialCandidates.at(counter).first;
+      m_FiducialCandidates.erase(m_FiducialCandidates.begin() + counter);
       MITK_INFO << "Found Fiducial No 6, PointSet: " << m_FiducialMarkerCentroids[6];
       return true;
     }
@@ -1442,14 +1588,14 @@ bool QmitkUSNavigationStepCtUsRegistration::FindFiducialNo7()
 
   mitk::Point3D fiducialNo8(m_FiducialMarkerCentroids.at(8));
 
-  for (unsigned int counter = 0; counter < m_CentroidsOfFiducialCandidates.size(); ++counter)
+  for (unsigned int counter = 0; counter < m_FiducialCandidates.size(); ++counter)
   {
-    mitk::Point3D fiducialCentroid(m_CentroidsOfFiducialCandidates.at(counter));
+    mitk::Point3D fiducialCentroid(m_FiducialCandidates.at(counter).first);
     double distance = fiducialNo8.EuclideanDistanceTo(fiducialCentroid);
     if (distance <= characteristicDistanceAWithUpperMargin)
     {
-      m_FiducialMarkerCentroids[7] = m_CentroidsOfFiducialCandidates.at(counter);
-      m_CentroidsOfFiducialCandidates.erase(m_CentroidsOfFiducialCandidates.begin() + counter);
+      m_FiducialMarkerCentroids[7] = m_FiducialCandidates.at(counter).first;
+      m_FiducialCandidates.erase(m_FiducialCandidates.begin() + counter);
       MITK_INFO << "Found Fiducial No 7, PointSet: " << m_FiducialMarkerCentroids[7];
       return true;
     }
@@ -1471,14 +1617,14 @@ bool QmitkUSNavigationStepCtUsRegistration::FindFiducialNo8()
 
   mitk::Point3D fiducialNo3(m_FiducialMarkerCentroids.at(3));
 
-  for (unsigned int counter = 0; counter < m_CentroidsOfFiducialCandidates.size(); ++counter)
+  for (unsigned int counter = 0; counter < m_FiducialCandidates.size(); ++counter)
   {
-    mitk::Point3D fiducialCentroid(m_CentroidsOfFiducialCandidates.at(counter));
+    mitk::Point3D fiducialCentroid(m_FiducialCandidates.at(counter).first);
     double distance = fiducialNo3.EuclideanDistanceTo(fiducialCentroid);
     if (distance <= characteristicDistanceBWithUpperMargin)
     {
-      m_FiducialMarkerCentroids[8] = m_CentroidsOfFiducialCandidates.at(counter);
-      m_CentroidsOfFiducialCandidates.erase(m_CentroidsOfFiducialCandidates.begin() + counter);
+      m_FiducialMarkerCentroids[8] = m_FiducialCandidates.at(counter).first;
+      m_FiducialCandidates.erase(m_FiducialCandidates.begin() + counter);
       MITK_INFO << "Found Fiducial No 8, PointSet: " << m_FiducialMarkerCentroids[8];
       return true;
     }
@@ -1499,18 +1645,24 @@ void QmitkUSNavigationStepCtUsRegistration::DefineDataStorageImageFilter()
   mitk::NodePredicateOr::Pointer validImages = mitk::NodePredicateOr::New();
   validImages->AddPredicate(mitk::NodePredicateAnd::New(isImage, mitk::NodePredicateNot::New(isSegmentation)));
 
-  mitk::NodePredicateNot::Pointer isNotAHelperObject = mitk::NodePredicateNot::New(mitk::NodePredicateProperty::New("helper object", mitk::BoolProperty::New(true)));
+  mitk::NodePredicateNot::Pointer isNotAHelperObject =
+    mitk::NodePredicateNot::New(mitk::NodePredicateProperty::New("helper object", mitk::BoolProperty::New(true)));
 
   m_IsOfTypeImagePredicate = mitk::NodePredicateAnd::New(validImages, isNotAHelperObject);
 
-  mitk::NodePredicateProperty::Pointer isBinaryPredicate = mitk::NodePredicateProperty::New("binary", mitk::BoolProperty::New(true));
+  mitk::NodePredicateProperty::Pointer isBinaryPredicate =
+    mitk::NodePredicateProperty::New("binary", mitk::BoolProperty::New(true));
   mitk::NodePredicateNot::Pointer isNotBinaryPredicate = mitk::NodePredicateNot::New(isBinaryPredicate);
 
-  mitk::NodePredicateAnd::Pointer isABinaryImagePredicate = mitk::NodePredicateAnd::New(m_IsOfTypeImagePredicate, isBinaryPredicate);
-  mitk::NodePredicateAnd::Pointer isNotABinaryImagePredicate = mitk::NodePredicateAnd::New(m_IsOfTypeImagePredicate, isNotBinaryPredicate);
+  mitk::NodePredicateAnd::Pointer isABinaryImagePredicate =
+    mitk::NodePredicateAnd::New(m_IsOfTypeImagePredicate, isBinaryPredicate);
+  mitk::NodePredicateAnd::Pointer isNotABinaryImagePredicate =
+    mitk::NodePredicateAnd::New(m_IsOfTypeImagePredicate, isNotBinaryPredicate);
 
-  m_IsASegmentationImagePredicate = mitk::NodePredicateOr::New(isABinaryImagePredicate, mitk::TNodePredicateDataType<mitk::LabelSetImage>::New());
-  m_IsAPatientImagePredicate = mitk::NodePredicateAnd::New(isNotABinaryImagePredicate, mitk::NodePredicateNot::New(mitk::TNodePredicateDataType<mitk::LabelSetImage>::New()));
+  m_IsASegmentationImagePredicate =
+    mitk::NodePredicateOr::New(isABinaryImagePredicate, mitk::TNodePredicateDataType<mitk::LabelSetImage>::New());
+  m_IsAPatientImagePredicate = mitk::NodePredicateAnd::New(
+    isNotABinaryImagePredicate, mitk::NodePredicateNot::New(mitk::TNodePredicateDataType<mitk::LabelSetImage>::New()));
 }
 
 void QmitkUSNavigationStepCtUsRegistration::CreateQtPartControl(QWidget *parent)
@@ -1523,37 +1675,34 @@ void QmitkUSNavigationStepCtUsRegistration::CreateQtPartControl(QWidget *parent)
   ui->pointSetComboBox->SetPredicate(m_IsAPointSetPredicate);
 
   // create signal/slot connections
-  connect(ui->floatingImageComboBox, SIGNAL(OnSelectionChanged(const mitk::DataNode*)),
-    this, SLOT(OnFloatingImageComboBoxSelectionChanged(const mitk::DataNode*)));
-  connect(ui->doRegistrationMarkerToImagePushButton, SIGNAL(clicked()),
-    this, SLOT(OnRegisterMarkerToFloatingImageCS()));
-  connect(ui->localizeFiducialMarkerPushButton, SIGNAL(clicked()),
-    this, SLOT(OnLocalizeFiducials()));
-  connect(ui->visualizeCTtoUSregistrationPushButton, SIGNAL(clicked()),
-    this, SLOT(OnVisualizeCTtoUSregistration()));
-  connect(ui->freezeUnfreezePushButton, SIGNAL(clicked()),
-    this, SLOT(OnFreeze()));
-  connect(ui->addCtImagePushButton, SIGNAL(clicked()),
-    this, SLOT(OnAddCtImageClicked()));
-  connect(ui->removeCtImagePushButton, SIGNAL(clicked()),
-    this, SLOT(OnRemoveCtImageClicked()));
-  connect(ui->evaluateProtocolPushButton, SIGNAL(clicked()),
-    this, SLOT(OnEvaluateGroundTruthFiducialLocalizationProtocol()));
-  connect(ui->actualizeSegmentationSurfacePSetDataPushButton, SIGNAL(clicked()),
-    this, SLOT(OnActualizeSegmentationSurfacePointSetData()));
-  connect(ui->calculateTREPushButton, SIGNAL(clicked()),
-    this, SLOT(OnGetCursorPosition()));
-  connect(ui->calculateCenterPushButton, SIGNAL(clicked()),
-    this, SLOT(OnCalculateCenter()));
+  connect(ui->floatingImageComboBox,
+          SIGNAL(OnSelectionChanged(const mitk::DataNode *)),
+          this,
+          SLOT(OnFloatingImageComboBoxSelectionChanged(const mitk::DataNode *)));
+  connect(
+    ui->doRegistrationMarkerToImagePushButton, SIGNAL(clicked()), this, SLOT(OnRegisterMarkerToFloatingImageCS()));
+  connect(ui->localizeFiducialMarkerPushButton, SIGNAL(clicked()), this, SLOT(OnLocalizeFiducials()));
+  connect(ui->visualizeCTtoUSregistrationPushButton, SIGNAL(clicked()), this, SLOT(OnVisualizeCTtoUSregistration()));
+  connect(ui->freezeUnfreezePushButton, SIGNAL(clicked()), this, SLOT(OnFreeze()));
+  connect(ui->addCtImagePushButton, SIGNAL(clicked()), this, SLOT(OnAddCtImageClicked()));
+  connect(ui->removeCtImagePushButton, SIGNAL(clicked()), this, SLOT(OnRemoveCtImageClicked()));
+  connect(
+    ui->evaluateProtocolPushButton, SIGNAL(clicked()), this, SLOT(OnEvaluateGroundTruthFiducialLocalizationProtocol()));
+  connect(ui->actualizeSegmentationSurfacePSetDataPushButton,
+          SIGNAL(clicked()),
+          this,
+          SLOT(OnActualizeSegmentationSurfacePointSetData()));
+  connect(ui->calculateTREPushButton, SIGNAL(clicked()), this, SLOT(OnGetCursorPosition()));
+  connect(ui->calculateCenterPushButton, SIGNAL(clicked()), this, SLOT(OnCalculateCenter()));
 }
 
-void QmitkUSNavigationStepCtUsRegistration::OnFloatingImageComboBoxSelectionChanged(const mitk::DataNode* node)
+void QmitkUSNavigationStepCtUsRegistration::OnFloatingImageComboBoxSelectionChanged(const mitk::DataNode *node)
 {
   MITK_INFO << "OnFloatingImageComboBoxSelectionChanged()";
 
   if (m_FloatingImage.IsNotNull())
   {
-    //TODO: Define, what will happen if the imageCT is not null...
+    // TODO: Define, what will happen if the imageCT is not null...
   }
 
   if (node == nullptr)
@@ -1563,7 +1712,7 @@ void QmitkUSNavigationStepCtUsRegistration::OnFloatingImageComboBoxSelectionChan
     return;
   }
 
-  mitk::DataNode* selectedFloatingImage = ui->floatingImageComboBox->GetSelectedNode();
+  mitk::DataNode *selectedFloatingImage = ui->floatingImageComboBox->GetSelectedNode();
   if (selectedFloatingImage == nullptr)
   {
     this->UnsetFloatingImageGeometry();
@@ -1571,7 +1720,7 @@ void QmitkUSNavigationStepCtUsRegistration::OnFloatingImageComboBoxSelectionChan
     return;
   }
 
-  mitk::Image::Pointer floatingImage = dynamic_cast<mitk::Image*>(selectedFloatingImage->GetData());
+  mitk::Image::Pointer floatingImage = dynamic_cast<mitk::Image *>(selectedFloatingImage->GetData());
   if (floatingImage.IsNull())
   {
     MITK_WARN << "Failed to cast selected segmentation node to mitk::Image*";
@@ -1588,15 +1737,14 @@ void QmitkUSNavigationStepCtUsRegistration::OnRegisterMarkerToFloatingImageCS()
 {
   this->CreateMarkerModelCoordinateSystemPointSet();
 
-  //Check for initialization
-  if( m_MarkerModelCoordinateSystemPointSet.IsNull() ||
-      m_MarkerFloatingImageCoordinateSystemPointSet.IsNull() )
+  // Check for initialization
+  if (m_MarkerModelCoordinateSystemPointSet.IsNull() || m_MarkerFloatingImageCoordinateSystemPointSet.IsNull())
   {
     MITK_WARN << "Fiducial Landmarks are not initialized yet, cannot register";
     return;
   }
 
-  //Retrieve fiducials
+  // Retrieve fiducials
   if (m_MarkerFloatingImageCoordinateSystemPointSet->GetSize() != m_MarkerModelCoordinateSystemPointSet->GetSize())
   {
     MITK_WARN << "Not the same number of fiducials, cannot register";
@@ -1608,34 +1756,35 @@ void QmitkUSNavigationStepCtUsRegistration::OnRegisterMarkerToFloatingImageCS()
     return;
   }
 
-  //############### conversion to vtk data types (we will use the vtk landmark based transform) ##########################
-  //convert point sets to vtk poly data
+  //############### conversion to vtk data types (we will use the vtk landmark based transform)
+  //########################## convert point sets to vtk poly data
   vtkSmartPointer<vtkPoints> sourcePoints = vtkSmartPointer<vtkPoints>::New();
   vtkSmartPointer<vtkPoints> targetPoints = vtkSmartPointer<vtkPoints>::New();
-  for (int i = 0; i<m_MarkerModelCoordinateSystemPointSet->GetSize(); i++)
+  for (int i = 0; i < m_MarkerModelCoordinateSystemPointSet->GetSize(); i++)
   {
-    double point[3] = { m_MarkerModelCoordinateSystemPointSet->GetPoint(i)[0],
-                        m_MarkerModelCoordinateSystemPointSet->GetPoint(i)[1],
-                        m_MarkerModelCoordinateSystemPointSet->GetPoint(i)[2] };
+    double point[3] = {m_MarkerModelCoordinateSystemPointSet->GetPoint(i)[0],
+                       m_MarkerModelCoordinateSystemPointSet->GetPoint(i)[1],
+                       m_MarkerModelCoordinateSystemPointSet->GetPoint(i)[2]};
     sourcePoints->InsertNextPoint(point);
 
-    double point_targets[3] = { m_MarkerFloatingImageCoordinateSystemPointSet->GetPoint(i)[0],
-                                m_MarkerFloatingImageCoordinateSystemPointSet->GetPoint(i)[1],
-                                m_MarkerFloatingImageCoordinateSystemPointSet->GetPoint(i)[2] };
+    double point_targets[3] = {m_MarkerFloatingImageCoordinateSystemPointSet->GetPoint(i)[0],
+                               m_MarkerFloatingImageCoordinateSystemPointSet->GetPoint(i)[1],
+                               m_MarkerFloatingImageCoordinateSystemPointSet->GetPoint(i)[2]};
     targetPoints->InsertNextPoint(point_targets);
   }
 
   //########################### here, the actual transform is computed ##########################
-  //compute transform
+  // compute transform
   vtkSmartPointer<vtkLandmarkTransform> transform = vtkSmartPointer<vtkLandmarkTransform>::New();
   transform->SetSourceLandmarks(sourcePoints);
   transform->SetTargetLandmarks(targetPoints);
   transform->SetModeToRigidBody();
   transform->Modified();
   transform->Update();
-  //compute FRE of transform
+  // compute FRE of transform
 
-  double FRE = mitk::StaticIGTHelperFunctions::ComputeFRE(m_MarkerModelCoordinateSystemPointSet, m_MarkerFloatingImageCoordinateSystemPointSet, transform);
+  double FRE = mitk::StaticIGTHelperFunctions::ComputeFRE(
+    m_MarkerModelCoordinateSystemPointSet, m_MarkerFloatingImageCoordinateSystemPointSet, transform);
   MITK_INFO << "FRE: " << FRE << " mm";
   if (m_PerformingGroundTruthProtocolEvaluation)
   {
@@ -1644,53 +1793,33 @@ void QmitkUSNavigationStepCtUsRegistration::OnRegisterMarkerToFloatingImageCS()
   //#############################################################################################
 
   //############### conversion back to itk/mitk data types ##########################
-  //convert from vtk to itk data types
+  // convert from vtk to itk data types
   itk::Matrix<float, 3, 3> rotationFloat = itk::Matrix<float, 3, 3>();
   itk::Vector<float, 3> translationFloat = itk::Vector<float, 3>();
   itk::Matrix<double, 3, 3> rotationDouble = itk::Matrix<double, 3, 3>();
   itk::Vector<double, 3> translationDouble = itk::Vector<double, 3>();
 
   vtkSmartPointer<vtkMatrix4x4> m = transform->GetMatrix();
-  for (int k = 0; k<3; k++) for (int l = 0; l<3; l++)
-  {
-    rotationFloat[k][l] = m->GetElement(k, l);
-    rotationDouble[k][l] = m->GetElement(k, l);
-
-  }
-  for (int k = 0; k<3; k++)
+  for (int k = 0; k < 3; k++)
+    for (int l = 0; l < 3; l++)
+    {
+      rotationFloat[k][l] = m->GetElement(k, l);
+      rotationDouble[k][l] = m->GetElement(k, l);
+    }
+  for (int k = 0; k < 3; k++)
   {
     translationFloat[k] = m->GetElement(k, 3);
     translationDouble[k] = m->GetElement(k, 3);
   }
-  //create mitk affine transform 3D and save it to the class member
+  // create mitk affine transform 3D and save it to the class member
   m_TransformMarkerCSToFloatingImageCS = mitk::AffineTransform3D::New();
   m_TransformMarkerCSToFloatingImageCS->SetMatrix(rotationDouble);
   m_TransformMarkerCSToFloatingImageCS->SetOffset(translationDouble);
   MITK_INFO << m_TransformMarkerCSToFloatingImageCS;
-  //################################################################
 
-  //############### object is transformed ##########################
-  //transform surface/image
-  //only move image if we have one. Sometimes, this widget is used just to register point sets without images.
-
-  /*if (m_ImageNode.IsNotNull())
+  if (!m_PerformingGroundTruthProtocolEvaluation)
   {
-    //first we have to store the original ct image transform to compose it with the new transform later
-    mitk::AffineTransform3D::Pointer imageTransform = m_ImageNode->GetData()->GetGeometry()->GetIndexToWorldTransform();
-    imageTransform->Compose(mitkTransform);
-    mitk::AffineTransform3D::Pointer newImageTransform = mitk::AffineTransform3D::New(); //create new image transform... setting the composed directly leads to an error
-    itk::Matrix<mitk::ScalarType, 3, 3> rotationFloatNew = imageTransform->GetMatrix();
-    itk::Vector<mitk::ScalarType, 3> translationFloatNew = imageTransform->GetOffset();
-    newImageTransform->SetMatrix(rotationFloatNew);
-    newImageTransform->SetOffset(translationFloatNew);
-    m_ImageNode->GetData()->GetGeometry()->SetIndexToWorldTransform(newImageTransform);
-  }*/
-
-  //If this option is set, each point will be transformed and the acutal coordinates of the points change.
-
-  if( !m_PerformingGroundTruthProtocolEvaluation )
-  {
-    mitk::PointSet* pointSet_orig = m_MarkerModelCoordinateSystemPointSet;
+    mitk::PointSet *pointSet_orig = m_MarkerModelCoordinateSystemPointSet;
     mitk::PointSet::Pointer pointSet_moved = mitk::PointSet::New();
 
     for (int i = 0; i < pointSet_orig->GetSize(); i++)
@@ -1702,16 +1831,15 @@ void QmitkUSNavigationStepCtUsRegistration::OnRegisterMarkerToFloatingImageCS()
     for (int i = 0; i < pointSet_moved->GetSize(); i++)
       pointSet_orig->InsertPoint(pointSet_moved->GetPoint(i));
 
-    //Do a global reinit
+    // Do a global reinit
     mitk::RenderingManager::GetInstance()->InitializeViewsByBoundingObjects(this->GetDataStorage());
   }
-
 }
 
 void QmitkUSNavigationStepCtUsRegistration::OnLocalizeFiducials()
 {
   m_FiducialMarkerCentroids.clear();
-  m_CentroidsOfFiducialCandidates.clear();
+  m_FiducialCandidates.clear();
   if (m_MarkerFloatingImageCoordinateSystemPointSet.IsNotNull())
   {
     m_MarkerFloatingImageCoordinateSystemPointSet->Clear();
@@ -1729,23 +1857,44 @@ void QmitkUSNavigationStepCtUsRegistration::OnLocalizeFiducials()
 
   this->GetCentroidsOfLabeledObjects();
 
-  for (int i = 0; m_CentroidsOfFiducialCandidates.size() > NUMBER_FIDUCIALS_NEEDED && i < 100; ++i)
+  int numberTrialsNonReducingFiducialCandidates = 0;
+  for (int i = 0; m_FiducialCandidates.size() > NUMBER_FIDUCIALS_NEEDED && i < 100; ++i)
   {
-    MITK_INFO << "Size centroids fiducial candidates: " << m_CentroidsOfFiducialCandidates.size();
+    MITK_INFO << "Size centroids fiducial candidates: " << m_FiducialCandidates.size();
+    unsigned int oldNumberFiducialCandidates = m_FiducialCandidates.size();
     if (!this->EliminateFiducialCandidatesByEuclideanDistances() ||
-        m_CentroidsOfFiducialCandidates.size() < NUMBER_FIDUCIALS_NEEDED)
+        m_FiducialCandidates.size() < NUMBER_FIDUCIALS_NEEDED)
     {
       QMessageBox msgBox;
       QString text = QString("Have found %1 instead of 8 fiducial candidates.\
       Cannot perform fiducial localization procedure.")
-                       .arg(m_CentroidsOfFiducialCandidates.size());
+                       .arg(m_FiducialCandidates.size());
       msgBox.setText(text);
       msgBox.exec();
       return;
     }
+    if (oldNumberFiducialCandidates - m_FiducialCandidates.size() == 0)
+    {
+      ++numberTrialsNonReducingFiducialCandidates;
+    }
+    if ( numberTrialsNonReducingFiducialCandidates >= 3 )
+    {
+      MITK_INFO << "Skipping EliminateFiducialCandidatesByEuclideanDistances() as \
+                    it does not reduce the fiducial candidates further.";
+      break;
+    }
   }
 
-  //Before calling NumerateFiducialMarks it must be sure,
+  // Find all pairs of fiducial candidates, whose euclidean distance is smaller than
+  // a predefined limit value. As one fiducial candidate of each pair does not
+  // correspond to a true fiducial, these false candidates can be eliminated, which
+  // reduces the total amount of fiducial candidates.
+  for (int i = 0; (m_FiducialCandidates.size() > NUMBER_FIDUCIALS_NEEDED) && (i < 50); ++i)
+  {
+    this->EliminateNearFiducialCandidatesByMaxDistanceToCentroids();
+  }
+
+  // Before calling NumerateFiducialMarks it must be sure,
   // that there rested only 8 fiducial candidates.
   this->NumerateFiducialMarks();
 }
@@ -1754,7 +1903,7 @@ void QmitkUSNavigationStepCtUsRegistration::OnVisualizeCTtoUSregistration()
 {
   emit this->ActualizeCtToUsRegistrationWidget();
 
-  mitk::DataNode* segmentationNode = ui->segmentationComboBox->GetSelectedNode();
+  mitk::DataNode *segmentationNode = ui->segmentationComboBox->GetSelectedNode();
   if (segmentationNode == nullptr)
   {
     QMessageBox msgBox;
@@ -1765,7 +1914,7 @@ void QmitkUSNavigationStepCtUsRegistration::OnVisualizeCTtoUSregistration()
   mitk::AffineTransform3D::Pointer transform = segmentationNode->GetData()->GetGeometry()->GetIndexToWorldTransform();
   MITK_WARN << "IndexToWorldTransform_segmentation = " << transform;
 
-  mitk::DataNode* surfaceNode = ui->selectedSurfaceComboBox->GetSelectedNode();
+  mitk::DataNode *surfaceNode = ui->selectedSurfaceComboBox->GetSelectedNode();
   if (surfaceNode == nullptr)
   {
     QMessageBox msgBox;
@@ -1774,7 +1923,7 @@ void QmitkUSNavigationStepCtUsRegistration::OnVisualizeCTtoUSregistration()
     return;
   }
 
-  mitk::DataNode* pointSetNode = ui->pointSetComboBox->GetSelectedNode();
+  mitk::DataNode *pointSetNode = ui->pointSetComboBox->GetSelectedNode();
   if (pointSetNode == nullptr)
   {
     QMessageBox msgBox;
@@ -1799,18 +1948,17 @@ void QmitkUSNavigationStepCtUsRegistration::OnVisualizeCTtoUSregistration()
     msgBox.exec();
     return;
   }
-  //Set the transformation from  marker-CS to the sensor-CS accordingly to the chosen user-option
-  m_FloatingImageToUltrasoundRegistrationFilter
-    ->InitializeTransformationMarkerCSToSensorCS(ui->useNdiTrackerCheckBox->isChecked());
+  // Set the transformation from  marker-CS to the sensor-CS accordingly to the chosen user-option
+  m_FloatingImageToUltrasoundRegistrationFilter->InitializeTransformationMarkerCSToSensorCS(
+    ui->useNdiTrackerCheckBox->isChecked());
   m_FloatingImageToUltrasoundRegistrationFilter->SetPointSet(pointSetNode);
   m_FloatingImageToUltrasoundRegistrationFilter->SetSegmentation(segmentationNode, m_FloatingImage);
   m_FloatingImageToUltrasoundRegistrationFilter->SetSurface(surfaceNode);
-  m_FloatingImageToUltrasoundRegistrationFilter
-    ->SetTransformMarkerCSToFloatingImageCS(m_TransformMarkerCSToFloatingImageCS);
-  m_FloatingImageToUltrasoundRegistrationFilter
-    ->SetTransformUSimageCSToTrackingCS(this->GetCombinedModality()->GetCalibration());
-  m_FloatingImageToUltrasoundRegistrationFilter
-    ->ConnectTo(this->GetCombinedModality()->GetNavigationDataSource());
+  m_FloatingImageToUltrasoundRegistrationFilter->SetTransformMarkerCSToFloatingImageCS(
+    m_TransformMarkerCSToFloatingImageCS);
+  m_FloatingImageToUltrasoundRegistrationFilter->SetTransformUSimageCSToTrackingCS(
+    this->GetCombinedModality()->GetCalibration());
+  m_FloatingImageToUltrasoundRegistrationFilter->ConnectTo(this->GetCombinedModality()->GetNavigationDataSource());
 }
 
 void QmitkUSNavigationStepCtUsRegistration::OnFreeze()
@@ -1836,7 +1984,7 @@ void QmitkUSNavigationStepCtUsRegistration::OnFreeze()
 
 void QmitkUSNavigationStepCtUsRegistration::OnActualizeSegmentationSurfacePointSetData()
 {
-  mitk::DataNode* segmentationNode = ui->segmentationComboBox->GetSelectedNode();
+  mitk::DataNode *segmentationNode = ui->segmentationComboBox->GetSelectedNode();
   if (segmentationNode == nullptr)
   {
     QMessageBox msgBox;
@@ -1845,7 +1993,7 @@ void QmitkUSNavigationStepCtUsRegistration::OnActualizeSegmentationSurfacePointS
     return;
   }
 
-  mitk::DataNode* surfaceNode = ui->selectedSurfaceComboBox->GetSelectedNode();
+  mitk::DataNode *surfaceNode = ui->selectedSurfaceComboBox->GetSelectedNode();
   if (surfaceNode == nullptr)
   {
     QMessageBox msgBox;
@@ -1854,7 +2002,7 @@ void QmitkUSNavigationStepCtUsRegistration::OnActualizeSegmentationSurfacePointS
     return;
   }
 
-  mitk::DataNode* pointSetNode = ui->pointSetComboBox->GetSelectedNode();
+  mitk::DataNode *pointSetNode = ui->pointSetComboBox->GetSelectedNode();
   if (pointSetNode == nullptr)
   {
     QMessageBox msgBox;
@@ -1884,7 +2032,7 @@ void QmitkUSNavigationStepCtUsRegistration::OnCalculateTRE(mitk::Point3D centroi
     return;
   }
 
-  mitk::PointSet::Pointer pointSet = dynamic_cast<mitk::PointSet*>(pointSetNode->GetData());
+  mitk::PointSet::Pointer pointSet = dynamic_cast<mitk::PointSet *>(pointSetNode->GetData());
   if (pointSet.IsNull())
   {
     ui->distanceTREValue->setText(QString("Unknown"));
@@ -1900,13 +2048,13 @@ void QmitkUSNavigationStepCtUsRegistration::OnCalculateCenter()
   if (node.IsNull())
   {
     QMessageBox msgBox;
-    msgBox.setText("Cannot calculate the centroid of the segmentation."\
-                    "The segmentationComboBox node returned a nullptr.");
+    msgBox.setText("Cannot calculate the centroid of the segmentation."
+                   "The segmentationComboBox node returned a nullptr.");
     msgBox.exec();
     return;
   }
 
-  mitk::LabelSetImage::Pointer image = dynamic_cast<mitk::LabelSetImage*>(node->GetData());
+  mitk::LabelSetImage::Pointer image = dynamic_cast<mitk::LabelSetImage *>(node->GetData());
   if (image.IsNull())
   {
     MITK_WARN << "Cannot CalculateCenter - the segmentation cannot be converted to mitk::Image";
@@ -1916,19 +2064,19 @@ void QmitkUSNavigationStepCtUsRegistration::OnCalculateCenter()
   ImageType::Pointer itkImage = ImageType::New();
   mitk::CastToItkImage(image, itkImage);
 
-  //Initialize binary image to shape label map filter
+  // Initialize binary image to shape label map filter
   BinaryImageToShapeLabelMapFilterType::Pointer shapeLabelMapFilter = BinaryImageToShapeLabelMapFilterType::New();
   shapeLabelMapFilter->SetInputForegroundValue(1);
 
   shapeLabelMapFilter->SetInput(itkImage);
   shapeLabelMapFilter->Update();
 
-  BinaryImageToShapeLabelMapFilterType::OutputImageType::Pointer labelMap =
-    shapeLabelMapFilter->GetOutput();
+  BinaryImageToShapeLabelMapFilterType::OutputImageType::Pointer labelMap = shapeLabelMapFilter->GetOutput();
   for (int i = labelMap->GetNumberOfLabelObjects() - 1; i >= 0; --i)
   {
     // Get the ith region
-    BinaryImageToShapeLabelMapFilterType::OutputImageType::LabelObjectType* labelObject = labelMap->GetNthLabelObject(i);
+    BinaryImageToShapeLabelMapFilterType::OutputImageType::LabelObjectType *labelObject =
+      labelMap->GetNthLabelObject(i);
 
     mitk::Vector3D centroid;
     centroid[0] = labelObject->GetCentroid()[0];
@@ -1940,13 +2088,13 @@ void QmitkUSNavigationStepCtUsRegistration::OnCalculateCenter()
 
 void QmitkUSNavigationStepCtUsRegistration::OnAddCtImageClicked()
 {
-  mitk::DataNode* selectedCtImage = ui->ctImagesToChooseComboBox->GetSelectedNode();
+  mitk::DataNode *selectedCtImage = ui->ctImagesToChooseComboBox->GetSelectedNode();
   if (selectedCtImage == nullptr)
   {
     return;
   }
 
-  mitk::Image::Pointer ctImage = dynamic_cast<mitk::Image*>(selectedCtImage->GetData());
+  mitk::Image::Pointer ctImage = dynamic_cast<mitk::Image *>(selectedCtImage->GetData());
   if (ctImage.IsNull())
   {
     MITK_WARN << "Failed to cast selected segmentation node to mitk::Image*";
@@ -1954,7 +2102,7 @@ void QmitkUSNavigationStepCtUsRegistration::OnAddCtImageClicked()
   }
   QString name = QString::fromStdString(selectedCtImage->GetName());
 
-  for( int counter = 0; counter < ui->chosenCtImagesListWidget->count(); ++counter)
+  for (int counter = 0; counter < ui->chosenCtImagesListWidget->count(); ++counter)
   {
     MITK_INFO << ui->chosenCtImagesListWidget->item(counter)->text() << " - " << counter;
     MITK_INFO << m_ImagesGroundTruthProtocol.at(counter).GetPointer();
@@ -2024,20 +2172,20 @@ void QmitkUSNavigationStepCtUsRegistration::OnEvaluateGroundTruthFiducialLocaliz
   else if (ui->protocolEvaluationTypeComboBox->currentText().compare("PLANE") == 0)
   {
     if (m_GroundTruthProtocolTRE.find(0) != m_GroundTruthProtocolTRE.end() &&
-      m_GroundTruthProtocolTRE.find(20) != m_GroundTruthProtocolTRE.end() &&
-      m_GroundTruthProtocolTRE.find(40) != m_GroundTruthProtocolTRE.end() &&
-      m_GroundTruthProtocolTRE.find(60) != m_GroundTruthProtocolTRE.end() &&
-      m_GroundTruthProtocolTRE.find(80) != m_GroundTruthProtocolTRE.end() &&
-      m_GroundTruthProtocolTRE.find(100) != m_GroundTruthProtocolTRE.end())
+        m_GroundTruthProtocolTRE.find(20) != m_GroundTruthProtocolTRE.end() &&
+        m_GroundTruthProtocolTRE.find(40) != m_GroundTruthProtocolTRE.end() &&
+        m_GroundTruthProtocolTRE.find(60) != m_GroundTruthProtocolTRE.end() &&
+        m_GroundTruthProtocolTRE.find(80) != m_GroundTruthProtocolTRE.end() &&
+        m_GroundTruthProtocolTRE.find(100) != m_GroundTruthProtocolTRE.end())
     {
       ui->TREValue->setText(QString("Depth 0mm: %1\nDepth 20mm: %2\nDepth 40mm: %3\
                                     \nDepth 60mm: %4\nDepth 80mm: %5\nDepth 100mm: %6")
-                                    .arg(m_GroundTruthProtocolTRE.at(0))
-                                    .arg(m_GroundTruthProtocolTRE.at(20))
-                                    .arg(m_GroundTruthProtocolTRE.at(40))
-                                    .arg(m_GroundTruthProtocolTRE.at(60))
-                                    .arg(m_GroundTruthProtocolTRE.at(80))
-                                    .arg(m_GroundTruthProtocolTRE.at(100)));
+                              .arg(m_GroundTruthProtocolTRE.at(0))
+                              .arg(m_GroundTruthProtocolTRE.at(20))
+                              .arg(m_GroundTruthProtocolTRE.at(40))
+                              .arg(m_GroundTruthProtocolTRE.at(60))
+                              .arg(m_GroundTruthProtocolTRE.at(80))
+                              .arg(m_GroundTruthProtocolTRE.at(100)));
     }
   }
 

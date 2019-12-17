@@ -58,7 +58,10 @@ typedef itk::BinaryThresholdImageFilter <ImageType, ImageType> BinaryThresholdIm
 typedef itk::LaplacianRecursiveGaussianImageFilter<ImageType, ImageType> LaplacianRecursiveGaussianImageFilterType;
 typedef itk::VotingBinaryIterativeHoleFillingImageFilter<ImageType> VotingBinaryIterativeHoleFillingImageFilterType;
 typedef itk::BinaryImageToShapeLabelMapFilter<ImageType> BinaryImageToShapeLabelMapFilterType;
-/**
+typedef BinaryImageToShapeLabelMapFilterType::OutputImageType::LabelObjectType ShapeLabelObjectType;
+typedef std::pair<mitk::Vector3D, BinaryImageToShapeLabelMapFilterType::OutputImageType::LabelObjectType *> FiducialCandidatePairType;
+
+  /**
  * \brief Navigation step for marking risk structures.
  * The user can add risk structures by interacting with the render windows. The
  * risk structures are organized in an embedded table view.
@@ -155,10 +158,12 @@ protected:
 
   void EliminateTooSmallLabeledObjects( ImageType::Pointer binaryImage);
   bool EliminateFiducialCandidatesByEuclideanDistances();
+  void EliminateNearFiducialCandidatesByMaxDistanceToCentroids();
   void ClassifyFiducialCandidates();
   void GetCentroidsOfLabeledObjects();
   void NumerateFiducialMarks();
   void CalculateDistancesBetweenFiducials(std::vector<std::vector<double>> &distanceVectorsFiducials);
+  double GetMaxDistanceToCentroidOfFiducialCandidate(unsigned int &index);
   bool FindFiducialNo1(std::vector<std::vector<double>> &distanceVectorsFiducials);
   bool FindFiducialNo2And3();
   bool FindFiducialNo4(std::vector<std::vector<double>> &distanceVectorsFiducials);
@@ -210,14 +215,12 @@ private:
   BinaryThresholdImageFilterType::Pointer m_BinaryThresholdFilter;
   LaplacianRecursiveGaussianImageFilterType::Pointer m_LaplacianFilter1;
   LaplacianRecursiveGaussianImageFilterType::Pointer m_LaplacianFilter2;
-  LaplacianRecursiveGaussianImageFilterType::Pointer m_LaplacianFilter3;
-  LaplacianRecursiveGaussianImageFilterType::Pointer m_LaplacianFilter4;
   VotingBinaryIterativeHoleFillingImageFilterType::Pointer m_HoleFillingFilter;
   BinaryImageToShapeLabelMapFilterType::Pointer m_BinaryImageToShapeLabelMapFilter;
 
   itk::SmartPointer<mitk::FloatingImageToUltrasoundRegistrationFilter> m_FloatingImageToUltrasoundRegistrationFilter;
 
-  std::vector<mitk::Vector3D> m_CentroidsOfFiducialCandidates;
+  std::vector<FiducialCandidatePairType> m_FiducialCandidates;
   std::map<double, mitk::Vector3D> m_EigenVectorsFiducialCandidates;
   std::vector<double> m_EigenValuesFiducialCandidates;
   mitk::Vector3D m_MeanCentroidFiducialCandidates;
@@ -226,7 +229,7 @@ private:
   mitk::AffineTransform3D::Pointer m_TransformMarkerCSToFloatingImageCS;
 
   /*!
-  \brief The 3D  dimension of the CT image given in index size.
+  \brief The 3D  dimension of the CT or MRI image given in index size.
   */
   mitk::Vector3D m_ImageDimension;
   mitk::Vector3D m_ImageSpacing;
