@@ -979,7 +979,7 @@ bool QmitkUSNavigationStepCtUsRegistration::EliminateFiducialCandidatesByEuclide
     // candidate and the other candidates. For each candidate with a right distance between
     // Configuration A: 7.93mm and 31.0mm (10 mm distance between fiducial centers) or
     // Configuration B: 11.895mm and 45.0mm (15 mm distance between fiducial centers) or
-    // Configuration C: 15.86mm and 59.0mm (20 mm distance between fiducial centers)
+    // Configuration C: 15.86mm and 60.0mm (20 mm distance between fiducial centers)
     //
     // increase the amountOfAcceptedFiducials.
     for (unsigned int position = 0; position < m_FiducialCandidates.size(); ++position)
@@ -1009,7 +1009,7 @@ bool QmitkUSNavigationStepCtUsRegistration::EliminateFiducialCandidatesByEuclide
           break;
         // case 2 is equal to fiducial marker configuration C (20mm distance)
         case 2:
-          if (distance > 15.86 && distance < 59.0)
+          if (distance > 15.86 && distance < 60.0)
           {
             ++amountOfAcceptedFiducials;
           }
@@ -1030,9 +1030,13 @@ bool QmitkUSNavigationStepCtUsRegistration::EliminateFiducialCandidatesByEuclide
     }
   }
 
-  // Classify the rested fiducial candidates by its characteristic Euclidean distances
-  // between the canidates and remove all candidates with a false distance configuration:
-  this->ClassifyFiducialCandidates();
+  if (m_FiducialCandidates.size() > NUMBER_FIDUCIALS_NEEDED)
+  {
+    // Classify the rested fiducial candidates by its characteristic Euclidean distances
+    // between the canidates and remove all candidates with a false distance configuration:
+    this->ClassifyFiducialCandidates();
+  }
+
   return true;
 }
 
@@ -1209,12 +1213,20 @@ void QmitkUSNavigationStepCtUsRegistration::ClassifyFiducialCandidates()
           else if (distance > 39.68 && distance <= 46.85)
           {
             ++distanceD;
+            if (distance > 44.00)
+            {
+              ++distanceE;
+            }
           }
           else if (distance > 46.85 && distance <= 52.77)
           {
             ++distanceE;
+            if (distance < 49.00)
+            {
+              ++distanceD;
+            }
           }
-          else if (distance > 52.77 && distance <= 59.00)
+          else if (distance > 52.77 && distance <= 60.00)
           {
             ++distanceF;
           }
@@ -1345,14 +1357,14 @@ void QmitkUSNavigationStepCtUsRegistration::CalculateDistancesBetweenFiducials(
   }
 
   //Uncomment this block of code for development purposes:
-  /*for (unsigned int i = 0; i < distanceVectorsFiducials.size(); ++i)
+  for (unsigned int i = 0; i < distanceVectorsFiducials.size(); ++i)
   {
     MITK_INFO << "Vector " << i << ":";
     for (unsigned int k = 0; k < distanceVectorsFiducials.at(i).size(); ++k)
     {
       MITK_INFO << distanceVectorsFiducials.at(i).at(k);
     }
-  }*/
+  }
 }
 
 double QmitkUSNavigationStepCtUsRegistration::GetMaxDistanceToCentroidOfFiducialCandidate(unsigned int &index)
@@ -2134,13 +2146,13 @@ void QmitkUSNavigationStepCtUsRegistration::OnRemoveCtImageClicked()
 void QmitkUSNavigationStepCtUsRegistration::OnEvaluateGroundTruthFiducialLocalizationProtocol()
 {
   m_GroundTruthProtocolFRE.clear();
-  if (m_ImagesGroundTruthProtocol.size() != 6)
+  /*if (m_ImagesGroundTruthProtocol.size() != 6)
   {
     QMessageBox msgBox;
     msgBox.setText("For evaluating the Ground-Truth-Fiducial-Localization-Protocol there must be loaded 6 different CT images.");
     msgBox.exec();
     return;
-  }
+  }*/
 
   m_PerformingGroundTruthProtocolEvaluation = true;
   this->CreatePointsToTransformForGroundTruthProtocol();
