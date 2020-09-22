@@ -951,9 +951,7 @@ void QmitkUSNavigationStepCtUsRegistration::EliminateTooSmallLabeledObjects(Imag
     BinaryImageToShapeLabelMapFilterType::OutputImageType::LabelObjectType *labelObject =
       labelMap->GetNthLabelObject(i);
 
-    // TODO: Threshold-Wert evtl. experimentell besser abstimmen,
-    //      um zu verhindern, dass durch Threshold wahre Fiducial-Kandidaten elimiert werden.
-    if (labelObject->Size() < numberOfPixels * 0.6 || labelObject->Size() > numberOfPixels * 2)
+    if (labelObject->Size() < numberOfPixels * 0.6 || (labelObject->Size() > numberOfPixels * 2 && ui->useMriCheckBox->isChecked()) )
     {
       /*for (unsigned int pixelId = 0; pixelId < labelObject->Size(); pixelId++)
       {
