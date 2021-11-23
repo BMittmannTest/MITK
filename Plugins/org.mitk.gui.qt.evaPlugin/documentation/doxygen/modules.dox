@@ -1,0 +1,16 @@
+/**
+  \defgroup org_mitk_gui_qt_evaPlugin org.mitk.gui.qt.evaPlugin
+  \ingroup MITKPlugins
+
+  \brief Describe your plugin here.
+
+*/
+
+/**
+  \defgroup org_mitk_gui_qt_evaPlugin_internal Internal
+  \ingroup org_mitk_gui_qt_evaPlugin
+
+  \brief This subcategory includes the internal classes of the org.mitk.gui.qt.evaPlugin plugin. Other
+  plugins must not rely on these classes. They contain implementation details and their interface
+  may change at any time. We mean it.
+*/
