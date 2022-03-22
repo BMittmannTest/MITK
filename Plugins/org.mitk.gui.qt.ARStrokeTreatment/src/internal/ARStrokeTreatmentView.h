@@ -136,6 +136,8 @@ protected slots:
 
   void OnTransformClicked();
 
+  void OnCalculateTREClicked();
+
   void OnScalingComboBoxChanged();
 
   void DisableVideoData();

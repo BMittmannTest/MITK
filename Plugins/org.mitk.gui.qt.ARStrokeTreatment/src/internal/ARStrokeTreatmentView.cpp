@@ -215,6 +215,7 @@ void ARStrokeTreatmentView::CreateConnections()
   connect(m_Controls->m_ScalingPushButton, SIGNAL(clicked()), this, SLOT(OnScalingChanged()));
   connect(m_Controls->m_ScalingComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(OnScalingComboBoxChanged()));
   connect(m_Controls->m_Transform, SIGNAL(clicked()), this, SLOT(OnTransformClicked()));
+  connect(m_Controls->m_CalculateTREPushButton, SIGNAL(clicked()), this, SLOT(OnCalculateTREClicked()));
   connect(m_Controls->m_ChangeDisplayPushButton, SIGNAL(clicked()), this, SLOT(OnChangeDisplayStyle()));
   // connect(m_Controls.m_TrackingDeviceSelectionWidget,
   //        SIGNAL(NavigationDataSourceSelected(mitk::NavigationDataSource::Pointer)),
@@ -415,9 +416,40 @@ void ARStrokeTreatmentView::OnTransformClicked()
     imageTransformNew);
   m_Controls->m_AutomaticRegistrationWidget->GetImageNode()->GetData()->GetGeometry()->SetIndexToWorldTransform(
     imageTransformNew);
+
+  for (int counter = 0; counter < m_Controls->m_AutomaticRegistrationWidget->GetPointSetsDataNodes().size(); ++counter)
+  {
+    m_Controls->m_AutomaticRegistrationWidget->GetPointSetsDataNodes()
+      .at(counter)
+      ->GetData()
+      ->GetGeometry()
+      ->SetIndexToWorldTransform(imageTransformNew);
+    m_Controls->m_AutomaticRegistrationWidget->GetPointSetsDataNodes().at(counter)->Modified();
+  }
   m_AffineTransform = imageTransformNew;
   m_TransformationSet = true;
   GlobalReinit();
+}
+
+void ARStrokeTreatmentView::OnCalculateTREClicked()
+{
+  mitk::DataNode::Pointer pointSetNode = m_Controls->m_AutomaticRegistrationWidget->GetPointSetNode();
+  if (pointSetNode.IsNull())
+  {
+    MITK_WARN << "Cannot calculate TRE. The pointSetsToChooseComboBox node returned a nullptr.";
+    return;
+  }
+
+  mitk::PointSet::Pointer pointSet = dynamic_cast<mitk::PointSet *>(pointSetNode->GetData());
+  if (pointSet.IsNull())
+  {
+    m_Controls->m_LabelTRE->setText(QString("Unknown"));
+    return;
+  }
+  mitk::Point3D positionEMTrackedGuideWire =
+    m_Controls->m_TrackingDeviceSelectionWidget->GetSelectedNavigationDataSource()->GetOutput(1)->GetPosition();
+  double distance = pointSet->GetPoint(0).EuclideanDistanceTo(positionEMTrackedGuideWire);
+  m_Controls->m_LabelTRE->setText(QString("%1").arg(distance));
 }
 
 void ARStrokeTreatmentView::OnChangeDisplayStyle()

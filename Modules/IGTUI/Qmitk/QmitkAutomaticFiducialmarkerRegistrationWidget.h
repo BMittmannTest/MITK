@@ -98,6 +98,12 @@ public:
 
   mitk::DataNode::Pointer GetSurfaceNode();
 
+  mitk::DataNode::Pointer GetPointSetNode();
+
+  std::vector<mitk::DataNode::Pointer> GetPointSetsDataNodes();
+
+
+
 signals:
 
 public slots:
@@ -145,6 +151,8 @@ protected slots:
   void OnImageToRegisterComboBoxSelectionChanged(const mitk::DataNode *node);
   void OnRegisterMarkerCSToImageCS();
   void OnLocalizeFiducials();
+  void OnAddPointSetClicked();
+  void OnRemovePointSetClicked();
 
 private:
 
@@ -152,10 +160,12 @@ private:
   mitk::NodePredicateOr::Pointer m_IsASegmentationImagePredicate;
   mitk::NodePredicateAnd::Pointer m_IsAPatientImagePredicate;
   mitk::NodePredicateDataType::Pointer m_IsASurfacePredicate;
+  mitk::TNodePredicateDataType<mitk::PointSet>::Pointer m_IsAPointSetPredicate;
 
   mitk::Image::Pointer m_ImageToRegister;
   mitk::PointSet::Pointer m_MarkerModelCoordinateSystemPointSet;
   mitk::PointSet::Pointer m_MarkerImageToRegisterCoordinateSystemPointSet;
+  std::vector<mitk::DataNode::Pointer> m_PointSetsDataNodes;
 
 
   ThresholdImageFilterType::Pointer m_ThresholdFilter;

@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>486</width>
-    <height>333</height>
+    <height>484</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -40,23 +40,28 @@
         </property>
        </widget>
       </item>
-      <item row="4" column="0">
-       <widget class="QLabel" name="selectedTrackerComboBoxLabel">
+      <item row="1" column="0">
+       <widget class="QLabel" name="selectedFiducialMarkerConfigurationLabel">
         <property name="text">
-         <string>Selected Tracker</string>
+         <string>Selected Marker Configuration</string>
         </property>
        </widget>
       </item>
-      <item row="4" column="1">
-       <widget class="QComboBox" name="selectedTrackerComboBox">
+      <item row="1" column="1">
+       <widget class="QComboBox" name="fiducialMarkerConfigurationComboBox">
         <item>
          <property name="text">
-          <string>NDI</string>
+          <string>15mm Minimal Distance</string>
          </property>
         </item>
         <item>
          <property name="text">
-          <string>Polhemus</string>
+          <string>20mm Minimal Distance</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>Masterproject Config I</string>
          </property>
         </item>
        </widget>
@@ -87,28 +92,23 @@
         </item>
        </widget>
       </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="selectedFiducialMarkerConfigurationLabel">
+      <item row="4" column="0">
+       <widget class="QLabel" name="selectedTrackerComboBoxLabel">
         <property name="text">
-         <string>Selected Marker Configuration</string>
+         <string>Selected Tracker</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="1">
-       <widget class="QComboBox" name="fiducialMarkerConfigurationComboBox">
+      <item row="4" column="1">
+       <widget class="QComboBox" name="selectedTrackerComboBox">
         <item>
          <property name="text">
-          <string>15mm Minimal Distance</string>
+          <string>NDI</string>
          </property>
         </item>
         <item>
          <property name="text">
-          <string>20mm Minimal Distance</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>Masterproject Config I</string>
+          <string>Polhemus</string>
          </property>
         </item>
        </widget>
@@ -132,6 +132,44 @@
       </item>
       <item row="8" column="0" colspan="2">
        <widget class="QmitkDataStorageComboBox" name="selectedSurfaceComboBox"/>
+      </item>
+      <item row="11" column="0">
+       <widget class="QLabel" name="label_2">
+        <property name="text">
+         <string>Selected PointSets:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="12" column="0">
+       <widget class="QListWidget" name="selectedPointSetsListWidget"/>
+      </item>
+      <item row="12" column="1">
+       <layout class="QVBoxLayout" name="verticalLayout_3">
+        <item>
+         <widget class="QPushButton" name="addPontSetPushButton">
+          <property name="text">
+           <string>Add</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="removePointSetPushButton">
+          <property name="text">
+           <string>Remove</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="14" column="0">
+       <widget class="QLabel" name="label">
+        <property name="text">
+         <string>Select PointSet:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="14" column="1">
+       <widget class="QmitkDataStorageComboBox" name="pointSetsToChooseComboBox"/>
       </item>
      </layout>
     </widget>
@@ -165,7 +203,8 @@
   <customwidget>
    <class>QmitkDataStorageComboBox</class>
    <extends>QComboBox</extends>
-   <header location="global">QmitkDataStorageComboBox.h</header>
+   <header>QmitkDataStorageComboBox.h</header>
+   <container>1</container>
   </customwidget>
  </customwidgets>
  <resources>
